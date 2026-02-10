@@ -11,7 +11,7 @@ import { supabase } from '../supabase';
 interface OrdersPageProps {
   restaurant: { id: string; name: string };
   waiterTableIds: string[];
-  onNewBatch?: () => void;
+  onNewBatch?: (data: { tableId: string; orderId: string; batchId: string; tableNumber: number }) => void;
   onTableMenuData?: (data: {
     allTablesWithStatus: Array<{
       tableId: string;
@@ -267,11 +267,20 @@ export const OrderGroupCard: React.FC<{
   // Inicializamos colapsado por defecto, a menos que se fuerce la expansión
   const [isCollapsed, setIsCollapsed] = useState(!forceExpanded);
   const [copiedPaymentId, setCopiedPaymentId] = useState<string | null>(null);
+  
+  // Obtener todos los batches (incluyendo CREADO) y ordenarlos por fecha para calcular números correctos
+  const allBatches = (order.order_batches || []).sort((a: any, b: any) => 
+    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+  
+  // Crear un mapa de batch.id -> número de envío basado en el orden cronológico
+  const batchNumberMap = new Map<string, number>();
+  allBatches.forEach((batch: any, index: number) => {
+    batchNumberMap.set(batch.id, index + 1);
+  });
+  
   // Filtrar lotes: no mostrar los que están en estado "CREADO"
-  const batches = (order.order_batches || []).filter((batch: any) => batch.status !== 'CREADO');
-
-  // Para la lógica de estado, usar todos los batches (incluyendo CREADO)
-  const allBatches = order.order_batches || [];
+  const batches = allBatches.filter((batch: any) => batch.status !== 'CREADO');
 
   // Calcular el estado de la mesa según los criterios:
   // Abierta: Tiene batches en CREADO, ENVIADO, PREPARANDO y/o algún guest tiene paid=FALSE con individual_amount > 0
@@ -411,15 +420,18 @@ export const OrderGroupCard: React.FC<{
       <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isCollapsed ? 'max-h-0' : 'max-h-[1200px]'}`}>
         <div className="flex-1 p-6 overflow-y-auto custom-scrollbar bg-white max-h-[500px]">
           {batches.length > 0 ? (
-            batches.map((batch: any, idx: number) => (
+            batches.map((batch: any, idx: number) => {
+              const batchNumber = batchNumberMap.get(batch.id) || (idx + 1);
+              return (
               <BatchCard 
                 key={batch.id} 
                 batch={batch} 
-                batchIndex={idx} 
+                batchIndex={batchNumber - 1} 
                 onUpdateBatchStatus={onUpdateBatchStatus}
                 isArchived={propIsClosed}
               />
-            ))
+              );
+            })
           ) : (
             <div className="flex flex-col items-center justify-center py-10 text-slate-200">
               <AlertCircle size={32} strokeWidth={1} className="mb-2" />
@@ -574,7 +586,23 @@ const OrderDetailContent: React.FC<{
   isClosed?: boolean;
 }> = ({ order, onCloseMesa, onUpdateBatchStatus, onMarkGuestAsPaid, markingGuestAsPaid, onRefresh, isClosed = false }) => {
   const [copiedPaymentId, setCopiedPaymentId] = useState<string | null>(null);
-  const batches = (order.order_batches || []).filter((b: any) => b.status !== 'CREADO');
+  
+  // Obtener todos los batches (incluyendo CREADO) y ordenarlos por fecha
+  const allBatches = (order.order_batches || []).sort((a: any, b: any) => 
+    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+  
+  // Filtrar solo los que no son CREADO para mostrar, pero mantener el orden descendente (más recientes primero)
+  const batches = allBatches
+    .filter((b: any) => b.status !== 'CREADO')
+    .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  
+  // Crear un mapa de batch.id -> número de envío basado en el orden cronológico
+  const batchNumberMap = new Map<string, number>();
+  allBatches.forEach((batch: any, index: number) => {
+    batchNumberMap.set(batch.id, index + 1);
+  });
+  
   const status = getOrderTableStatus(order);
 
   const guestsWithAmount = order.order_guests?.filter((g: any) => (g.individual_amount || 0) > 0) ?? [];
@@ -610,15 +638,18 @@ const OrderDetailContent: React.FC<{
       {/* 2. Cards de envíos (BatchCards) — fuera de cualquier card contenedora */}
       {batches.length > 0 ? (
         <div className="space-y-3">
-          {batches.map((batch: any, idx: number) => (
-            <BatchCard
-              key={batch.id}
-              batch={batch}
-              batchIndex={idx}
-              onUpdateBatchStatus={onUpdateBatchStatus}
-              isArchived={isClosed}
-            />
-          ))}
+          {batches.map((batch: any, idx: number) => {
+            const batchNumber = batchNumberMap.get(batch.id) || (idx + 1);
+            return (
+              <BatchCard
+                key={batch.id}
+                batch={batch}
+                batchIndex={batchNumber - 1}
+                onUpdateBatchStatus={onUpdateBatchStatus}
+                isArchived={isClosed}
+              />
+            );
+          })}
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-10 rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 text-slate-400">
@@ -766,13 +797,66 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
         event: 'INSERT', 
         schema: 'public', 
         table: 'order_batches' 
-      }, (payload) => {
+      }, async (payload) => {
+        console.log('🔔 Nuevo batch recibido:', payload.new);
+        
         if (bellAudioRef.current) {
           bellAudioRef.current.currentTime = 0;
           bellAudioRef.current.play().catch(() => {});
         }
-        onNewBatch?.();
-        setExpandedOrderId(payload.new.order_id);
+        
+        // Obtener información de la orden y mesa para la notificación
+        const orderId = payload.new.order_id;
+        const batchId = payload.new.id;
+        
+        try {
+          // Obtener la orden para obtener el table_id
+          const { data: orderData, error: orderError } = await supabase
+            .from('orders')
+            .select('table_id')
+            .eq('id', orderId)
+            .single();
+          
+          console.log('📋 Datos de la orden:', orderData, 'Error:', orderError);
+          
+          if (!orderError && orderData?.table_id) {
+            // Verificar que la mesa pertenece al mesero
+            const currentWaiterTableIds = waiterTableIdsRef.current;
+            if (!currentWaiterTableIds.includes(orderData.table_id)) {
+              console.log('⚠️ Batch no pertenece a una mesa asignada al mesero');
+              setExpandedOrderId(orderId);
+              fetchActiveOrders();
+              return;
+            }
+            
+            // Obtener el número de mesa
+            const { data: tableData, error: tableError } = await supabase
+              .from('tables')
+              .select('id, table_number')
+              .eq('id', orderData.table_id)
+              .single();
+            
+            console.log('🪑 Datos de la mesa:', tableData, 'Error:', tableError);
+            
+            if (!tableError && tableData) {
+              console.log('✅ Creando notificación para mesa:', tableData.table_number);
+              onNewBatch?.({
+                tableId: tableData.id,
+                orderId: orderId,
+                batchId: batchId,
+                tableNumber: tableData.table_number
+              });
+            } else {
+              console.error('❌ Error al obtener datos de la mesa:', tableError);
+            }
+          } else {
+            console.error('❌ Error al obtener datos de la orden:', orderError);
+          }
+        } catch (error) {
+          console.error('❌ Error al obtener información de la mesa:', error);
+        }
+        
+        setExpandedOrderId(orderId);
         fetchActiveOrders();
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'order_batches' }, () => {
@@ -988,7 +1072,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
       }
 
       const processedOrders = ordersFiltered.map((order: any) => {
-        // Obtener batches para esta orden
+        // Obtener batches para esta orden - ordenar por fecha descendente (más recientes primero)
         const orderBatches = batchesData
           .filter(batch => batch.order_id === order.id)
           .map((batch: any) => ({
@@ -996,7 +1080,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
             order_items: itemsData.filter(item => item.batch_id === batch.id)
           }))
           .sort((a: any, b: any) => 
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
           );
 
         // Calcular el timestamp de la actividad más reciente (orden o último lote)
