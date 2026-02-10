@@ -1621,6 +1621,11 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
         <div className="py-20 text-center text-slate-400">
           <p className="text-sm font-medium">Selecciona una mesa arriba</p>
         </div>
+      ) : allAssignedTables.length > 0 ? (
+        <div className="py-20 text-center text-slate-400">
+          <p className="text-sm font-medium">Todas tus mesas están libres</p>
+          <p className="text-xs text-slate-400 mt-2">Selecciona una mesa arriba cuando haya pedidos</p>
+        </div>
       ) : (
         <div className="py-40 flex flex-col items-center justify-center bg-white rounded-[4rem] border border-dashed border-gray-200 text-center">
            <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center text-gray-200 mb-6">
