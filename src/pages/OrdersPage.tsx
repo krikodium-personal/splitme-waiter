@@ -638,7 +638,8 @@ const OrderDetailContent: React.FC<{
   markingGuestAsPaid: string | null;
   onRefresh?: () => void;
   isClosed?: boolean;
-}> = ({ order, onCloseMesa, onUpdateBatchStatus, onMarkGuestAsPaid, markingGuestAsPaid, onRefresh, isClosed = false }) => {
+  onLiberarMesa?: (order: any) => Promise<void>;
+}> = ({ order, onCloseMesa, onUpdateBatchStatus, onMarkGuestAsPaid, markingGuestAsPaid, onRefresh, isClosed = false, onLiberarMesa }) => {
   const [copiedPaymentId, setCopiedPaymentId] = useState<string | null>(null);
   
   // Obtener todos los batches (incluyendo CREADO) y ordenarlos por fecha
@@ -711,6 +712,14 @@ const OrderDetailContent: React.FC<{
                 className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-sm active:scale-95"
               >
                 Cerrar mesa
+              </button>
+            )}
+            {order.status === 'CERRADO' && onLiberarMesa && (
+              <button
+                onClick={() => onLiberarMesa(order)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all shadow-sm active:scale-95"
+              >
+                Liberar mesa
               </button>
             )}
           </div>
@@ -1392,6 +1401,38 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
     }
   };
 
+  const handleLiberarMesa = async (order: any): Promise<void> => {
+    if (!order?.table_id) {
+      setErrorMsg("No se pudo identificar la mesa");
+      return;
+    }
+
+    try {
+      setErrorMsg(null);
+      console.log('🔄 Liberando mesa...', order.table_id);
+
+      // Actualizar el status de la mesa a "Libre" en la tabla tables
+      const { error: tableError } = await supabase
+        .from('tables')
+        .update({ status: 'Libre' })
+        .eq('id', order.table_id);
+
+      if (tableError) {
+        console.error("❌ Error al actualizar status de la mesa:", tableError);
+        setErrorMsg("No se pudo liberar la mesa: " + (tableError.message || 'Error desconocido'));
+        return;
+      }
+
+      console.log('✅ Mesa liberada correctamente');
+      
+      // Refrescar las órdenes para que se actualice el estado
+      await fetchActiveOrders();
+    } catch (err: any) {
+      console.error("Error al liberar la mesa:", err);
+      setErrorMsg("No se pudo liberar la mesa: " + (err.message || 'Error desconocido'));
+    }
+  };
+
   // Crear array combinado de todas las mesas asignadas (con y sin órdenes)
   // IMPORTANTE: Este hook debe estar ANTES del return condicional para cumplir las reglas de Hooks
   const allTablesWithStatus = useMemo(() => {
@@ -1399,6 +1440,29 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
       const orderForTable = orders.find(o => o.table_id === table.id);
       if (orderForTable) {
         const status = getOrderTableStatus(orderForTable);
+        // Si la orden está cerrada, mostrar como LIBRE (verde)
+        if (orderForTable.status === 'CERRADO') {
+          return {
+            tableId: table.id,
+            tableNumber: table.table_number,
+            orderId: orderForTable.id,
+            status: 'LIBRE',
+            statusColorClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+            hasOrder: true
+          };
+        }
+        // Si la mesa está abierta, mostrar ABIERTA (rojo)
+        if (status.label === 'Mesa abierta') {
+          return {
+            tableId: table.id,
+            tableNumber: table.table_number,
+            orderId: orderForTable.id,
+            status: 'ABIERTA',
+            statusColorClass: 'bg-red-100 text-red-800 border-red-200',
+            hasOrder: true
+          };
+        }
+        // Otros estados (pagada, lista para cerrar, etc.)
         return {
           tableId: table.id,
           tableNumber: table.table_number,
@@ -1408,12 +1472,13 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
           hasOrder: true
         };
       } else {
+        // Mesa sin orden = LIBRE (verde)
         return {
           tableId: table.id,
           tableNumber: table.table_number,
           orderId: null,
           status: 'LIBRE',
-          statusColorClass: 'bg-gray-100 text-gray-600 border-gray-200',
+          statusColorClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
           hasOrder: false
         };
       }
@@ -1535,6 +1600,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
             markingGuestAsPaid={markingGuestAsPaid}
             onRefresh={fetchActiveOrders}
             isClosed={selectedOrder.status === 'Pagado'}
+            onLiberarMesa={handleLiberarMesa}
           />
         </div>
       ) : orders.length > 0 ? (
