@@ -216,13 +216,14 @@ export const PushDiagnostics: React.FC<{ waiterId?: string }> = ({ waiterId }) =
       if (newSubscription) {
         setSubscription(newSubscription);
         await runDiagnostics(); // Re-ejecutar diagnósticos
-        alert('✅ Suscripción push registrada exitosamente!');
+        alert('✅ Suscripción push registrada exitosamente!\n\nLa suscripción se ha creado correctamente. Si VITE_PUSH_SUBSCRIPTION_URL está configurada, también se envió al backend.');
       } else {
         alert('❌ No se pudo registrar la suscripción. Revisa los diagnósticos arriba.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error al registrar push:', error);
-      alert(`❌ Error: ${error}`);
+      const errorMessage = error?.message || error?.toString() || 'Error desconocido';
+      alert(`❌ Error al registrar suscripción:\n\n${errorMessage}\n\nRevisa los diagnósticos arriba para más detalles.`);
     } finally {
       setRegistering(false);
     }

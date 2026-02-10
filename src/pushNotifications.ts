@@ -20,36 +20,65 @@ export function getNotificationPermission(): NotificationPermission {
 
 /** Pide permiso y suscribe a push; devuelve la suscripción para enviarla al backend. */
 export async function registerPushSubscription(waiterId?: string): Promise<PushSubscription | null> {
-  if (!isPushSupported() || !VAPID_PUBLIC_KEY) return null;
-  if (Notification.permission === 'denied') return null;
-
-  if (Notification.permission === 'default') {
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') return null;
+  if (!isPushSupported()) {
+    throw new Error('Push notifications no están soportadas en este navegador');
   }
 
-  const registration = await navigator.serviceWorker.ready;
-  const subscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
-  });
+  if (!VAPID_PUBLIC_KEY) {
+    throw new Error('VAPID Public Key no está configurada. Configura VITE_VAPID_PUBLIC_KEY en las variables de entorno.');
+  }
 
-  if (PUSH_SUBSCRIPTION_URL && subscription) {
-    try {
-      await fetch(PUSH_SUBSCRIPTION_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subscription: subscription.toJSON(),
-          waiter_id: waiterId,
-        }),
-      });
-    } catch (e) {
-      console.warn('[Push] No se pudo enviar la suscripción al backend:', e);
+  if (Notification.permission === 'denied') {
+    throw new Error('Los permisos de notificaciones están denegados. Ve a Configuración → Safari → Notificaciones para activarlos.');
+  }
+
+  // Pedir permisos si no están concedidos
+  if (Notification.permission === 'default') {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      throw new Error('Los permisos de notificaciones fueron denegados. Acepta los permisos cuando iOS lo solicite.');
     }
   }
 
-  return subscription;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
+    });
+
+    // Enviar suscripción al backend si está configurado
+    if (PUSH_SUBSCRIPTION_URL && subscription) {
+      try {
+        const response = await fetch(PUSH_SUBSCRIPTION_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            subscription: subscription.toJSON(),
+            waiter_id: waiterId,
+          }),
+        });
+        
+        if (!response.ok) {
+          console.warn('[Push] El backend rechazó la suscripción:', response.status, response.statusText);
+        }
+      } catch (e) {
+        console.warn('[Push] No se pudo enviar la suscripción al backend:', e);
+        // No lanzamos error aquí porque la suscripción se creó correctamente
+        // Solo no se pudo enviar al backend
+      }
+    } else if (!PUSH_SUBSCRIPTION_URL) {
+      console.warn('[Push] VITE_PUSH_SUBSCRIPTION_URL no está configurada. La suscripción no se enviará al backend.');
+    }
+
+    return subscription;
+  } catch (error: any) {
+    console.error('[Push] Error al crear suscripción:', error);
+    if (error.message) {
+      throw error;
+    }
+    throw new Error(`Error al registrar suscripción push: ${error.message || error}`);
+  }
 }
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
