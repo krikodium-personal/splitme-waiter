@@ -127,13 +127,20 @@ const App: React.FC = () => {
 
   // Escuchar mensajes del service worker cuando se hace click en una notificación
   useEffect(() => {
-    if (!waiter || !tableMenuData) return;
+    if (!waiter) return;
 
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'NOTIFICATION_CLICK') {
         const { orderId, batchId, tableNumber } = event.data.data || {};
-        if (orderId && tableMenuData) {
-          console.log('[App] Navegando desde notificación:', { orderId, batchId, tableNumber });
+        if (orderId) {
+          console.log('[App] Notificación click recibida:', { orderId, batchId, tableNumber });
+          // Guardar intención de navegar en localStorage (para que OrdersPage la ejecute cuando esté listo)
+          localStorage.setItem('pendingNavigation', JSON.stringify({
+            orderId,
+            batchId,
+            tableNumber,
+            timestamp: Date.now()
+          }));
           // Marcar el batch como nuevo en localStorage
           if (batchId) {
             const newBatches = JSON.parse(localStorage.getItem('newBatches') || '[]');
@@ -142,8 +149,12 @@ const App: React.FC = () => {
               localStorage.setItem('newBatches', JSON.stringify(newBatches));
             }
           }
-          // Navegar a la mesa
-          tableMenuData.onTableClick(orderId);
+          // Intentar navegar inmediatamente si tableMenuData está disponible
+          if (tableMenuData) {
+            console.log('[App] Navegando inmediatamente desde notificación');
+            tableMenuData.onTableClick(orderId);
+            localStorage.removeItem('pendingNavigation');
+          }
         }
       }
     };
@@ -156,15 +167,22 @@ const App: React.FC = () => {
 
   // Manejar parámetros de URL cuando se abre desde una notificación
   useEffect(() => {
-    if (!waiter || !tableMenuData) return;
+    if (!waiter) return;
 
     const params = new URLSearchParams(window.location.search);
     const orderId = params.get('orderId');
     const batchId = params.get('batchId');
     const tableNumber = params.get('tableNumber');
 
-    if (orderId && tableMenuData) {
-      console.log('[App] Navegando desde URL params:', { orderId, batchId, tableNumber });
+    if (orderId) {
+      console.log('[App] URL params detectados:', { orderId, batchId, tableNumber });
+      // Guardar intención de navegar en localStorage
+      localStorage.setItem('pendingNavigation', JSON.stringify({
+        orderId,
+        batchId,
+        tableNumber,
+        timestamp: Date.now()
+      }));
       // Marcar el batch como nuevo en localStorage
       if (batchId) {
         const newBatches = JSON.parse(localStorage.getItem('newBatches') || '[]');
@@ -173,12 +191,39 @@ const App: React.FC = () => {
           localStorage.setItem('newBatches', JSON.stringify(newBatches));
         }
       }
-      // Navegar a la mesa
-      tableMenuData.onTableClick(orderId);
       // Limpiar URL params
       window.history.replaceState({}, '', '/');
+      // Intentar navegar inmediatamente si tableMenuData está disponible
+      if (tableMenuData) {
+        console.log('[App] Navegando inmediatamente desde URL params');
+        tableMenuData.onTableClick(orderId);
+        localStorage.removeItem('pendingNavigation');
+      }
     }
   }, [waiter, tableMenuData]);
+
+  // Ejecutar navegación pendiente cuando tableMenuData esté disponible
+  useEffect(() => {
+    if (!tableMenuData) return;
+
+    try {
+      const pendingNav = localStorage.getItem('pendingNavigation');
+      if (pendingNav) {
+        const { orderId, timestamp } = JSON.parse(pendingNav);
+        // Solo ejecutar si tiene menos de 30 segundos (evitar navegaciones muy antiguas)
+        if (orderId && Date.now() - timestamp < 30000) {
+          console.log('[App] Ejecutando navegación pendiente:', orderId);
+          tableMenuData.onTableClick(orderId);
+          localStorage.removeItem('pendingNavigation');
+        } else {
+          localStorage.removeItem('pendingNavigation');
+        }
+      }
+    } catch (e) {
+      console.error('[App] Error al leer navegación pendiente:', e);
+      localStorage.removeItem('pendingNavigation');
+    }
+  }, [tableMenuData]);
 
   if (loading) {
     return (

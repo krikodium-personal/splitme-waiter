@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.11] - 2026-02-10
+
+### Agregado
+- 
+
+### Cambiado
+- 
+
+### Corregido
+- 
+
+
 ## [1.0.10] - 2026-02-10
 
 ### Agregado

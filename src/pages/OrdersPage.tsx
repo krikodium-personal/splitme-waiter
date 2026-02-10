@@ -1400,6 +1400,44 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
     });
   }, [allAssignedTables, orders]);
 
+  // Ejecutar navegación pendiente cuando las órdenes estén cargadas
+  useEffect(() => {
+    if (loading || orders.length === 0) return;
+
+    try {
+      const pendingNav = localStorage.getItem('pendingNavigation');
+      if (pendingNav) {
+        const { orderId, batchId, timestamp } = JSON.parse(pendingNav);
+        // Solo ejecutar si tiene menos de 30 segundos
+        if (orderId && Date.now() - timestamp < 30000) {
+          // Verificar que la orden existe
+          const orderExists = orders.some(o => o.id === orderId);
+          if (orderExists) {
+            console.log('[OrdersPage] Ejecutando navegación pendiente:', orderId);
+            setSelectedOrderId(orderId);
+            // Marcar batch como nuevo si existe
+            if (batchId) {
+              const newBatches = JSON.parse(localStorage.getItem('newBatches') || '[]');
+              if (!newBatches.includes(batchId)) {
+                newBatches.push(batchId);
+                localStorage.setItem('newBatches', JSON.stringify(newBatches));
+              }
+            }
+            localStorage.removeItem('pendingNavigation');
+          } else {
+            console.log('[OrdersPage] Orden no encontrada, limpiando navegación pendiente');
+            localStorage.removeItem('pendingNavigation');
+          }
+        } else {
+          localStorage.removeItem('pendingNavigation');
+        }
+      }
+    } catch (e) {
+      console.error('[OrdersPage] Error al leer navegación pendiente:', e);
+      localStorage.removeItem('pendingNavigation');
+    }
+  }, [loading, orders]);
+
   // Exponer datos del menú a App.tsx
   // IMPORTANTE: Este hook también debe estar ANTES del return condicional
   useEffect(() => {
