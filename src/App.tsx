@@ -398,7 +398,13 @@ const App: React.FC = () => {
                   const canSelect = tableInfo.hasOrder;
                   const isBlinking = blinkingTableIds.has(tableInfo.tableId);
                   // Debug: verificar datos
-                  console.log('[App] Renderizando mesa:', { tableNumber: tableInfo.tableNumber, status: tableInfo.status, hasOrder: tableInfo.hasOrder });
+                  console.log('[App] Renderizando mesa:', { 
+                    tableId: tableInfo.tableId,
+                    tableNumber: tableInfo.tableNumber, 
+                    status: tableInfo.status, 
+                    hasOrder: tableInfo.hasOrder,
+                    statusColorClass: tableInfo.statusColorClass
+                  });
                   return (
                     <button
                       key={tableInfo.tableId}
@@ -423,17 +429,22 @@ const App: React.FC = () => {
                           : 'bg-white border-gray-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/50 active:bg-indigo-50'
                       } ${isBlinking ? 'animate-pulse ring-4 ring-red-400 ring-opacity-75' : ''}`}
                     >
+                      {/* Número de mesa - siempre visible */}
                       <span className={`text-2xl font-black tracking-tighter ${isSelected ? 'text-white' : canSelect ? 'text-indigo-600' : 'text-slate-700'}`}>
-                        {tableInfo.tableNumber || '?'}
+                        {tableInfo.tableNumber ?? '?'}
                       </span>
+                      {/* Texto "Mesa" */}
                       <span className={`text-[9px] font-black uppercase tracking-widest ${isSelected ? 'opacity-90' : 'opacity-80'}`}>
                         Mesa
                       </span>
-                      {tableInfo.status && (
-                        <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase border ${isSelected ? 'bg-white/20 border-white/30 text-white' : tableInfo.statusColorClass || 'bg-emerald-100 text-emerald-800 border-emerald-200'}`}>
-                          {tableInfo.status}
-                        </span>
-                      )}
+                      {/* Status badge - siempre visible */}
+                      <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase border ${
+                        isSelected 
+                          ? 'bg-white/20 border-white/30 text-white' 
+                          : (tableInfo.statusColorClass || 'bg-emerald-100 text-emerald-800 border-emerald-200')
+                      }`}>
+                        {tableInfo.status || 'LIBRE'}
+                      </span>
                     </button>
                   );
                 })}
