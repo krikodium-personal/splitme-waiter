@@ -38,6 +38,38 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+/** Envía notificación push a todas las suscripciones de un mesero. Retorna { total, successful, failed }. */
+async function sendPushToWaiter(waiter_id, title, body, url = '/', data = {}) {
+  const { data: subscriptions, error } = await supabase
+    .from('push_subscriptions')
+    .select('subscription')
+    .eq('waiter_id', waiter_id);
+
+  if (error) throw error;
+  if (!subscriptions || subscriptions.length === 0) {
+    return { total: 0, successful: 0, failed: 0 };
+  }
+
+  const payload = JSON.stringify({ title, body, url, ...data });
+
+  const results = await Promise.allSettled(
+    subscriptions.map(async (sub) => {
+      try {
+        await webpush.sendNotification(sub.subscription, payload);
+        return { success: true, endpoint: sub.subscription.endpoint };
+      } catch (err) {
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          await supabase.from('push_subscriptions').delete().eq('endpoint', sub.subscription.endpoint);
+        }
+        return { success: false, endpoint: sub.subscription.endpoint, error: err.message };
+      }
+    })
+  );
+
+  const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+  return { total: subscriptions.length, successful, failed: results.length - successful };
+}
+
 // Endpoint para recibir suscripciones (opcional, si prefieres guardarlas aquí)
 app.post('/api/push-subscribe', async (req, res) => {
   try {
@@ -113,61 +145,11 @@ app.post('/api/send-push', async (req, res) => {
       });
     }
 
-    // Obtener todas las suscripciones del mesero
-    const { data: subscriptions, error } = await supabase
-      .from('push_subscriptions')
-      .select('subscription')
-      .eq('waiter_id', waiter_id);
-
-    if (error) throw error;
-
-    if (!subscriptions || subscriptions.length === 0) {
-      return res.json({ 
-        message: 'No subscriptions found for this waiter',
-        count: 0
-      });
-    }
-
-    // Preparar payload de notificación
-    const payload = JSON.stringify({
-      title,
-      body,
-      url: url || '/',
-      ...data
-    });
-
-    // Enviar a cada suscripción
-    const results = await Promise.allSettled(
-      subscriptions.map(async (sub) => {
-        try {
-          await webpush.sendNotification(sub.subscription, payload);
-          return { success: true, endpoint: sub.subscription.endpoint };
-        } catch (error) {
-          // Si la suscripción es inválida, eliminarla
-          if (error.statusCode === 410 || error.statusCode === 404) {
-            console.log(`Removing invalid subscription: ${sub.subscription.endpoint}`);
-            await supabase
-              .from('push_subscriptions')
-              .delete()
-              .eq('endpoint', sub.subscription.endpoint);
-          }
-          return { 
-            success: false, 
-            endpoint: sub.subscription.endpoint, 
-            error: error.message 
-          };
-        }
-      })
-    );
-
-    const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
-    const failed = results.length - successful;
+    const result = await sendPushToWaiter(waiter_id, title, body, url || '/', data || {});
 
     return res.json({
       message: 'Notifications sent',
-      total: subscriptions.length,
-      successful,
-      failed
+      ...result
     });
   } catch (error) {
     console.error('Error sending push:', error);
@@ -186,82 +168,66 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Escuchar eventos de Supabase Realtime
-async function setupRealtimeListener() {
-  console.log('🔔 Configurando listener de Supabase Realtime...');
+/**
+ * Webhook para Supabase Database Webhooks.
+ * Configura en Supabase: Database → Webhooks → INSERT en order_batches.
+ * En Vercel serverless no hay proceso persistente, así que Realtime no sirve;
+ * este endpoint es llamado por Supabase cada vez que se inserta un batch.
+ */
+app.post('/api/webhook/new-batch', async (req, res) => {
+  // Responder rápido para no timeout del webhook
+  res.status(202).json({ received: true });
 
-  const channel = supabase
-    .channel('new-batches-channel')
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'order_batches',
-      },
-      async (payload) => {
-        console.log('📦 Nuevo batch detectado:', payload.new.id);
+  try {
+    const payload = req.body;
+    // Formato Supabase Database Webhook: { type, table, record, schema, old_record }
+    const record = payload.record || payload.new || payload;
+    const orderId = record.order_id;
 
-        try {
-          // Obtener información de la orden y mesa
-          const { data: order, error: orderError } = await supabase
-            .from('orders')
-            .select('table_id')
-            .eq('id', payload.new.order_id)
-            .single();
+    if (!orderId) {
+      console.error('❌ Webhook new-batch: falta order_id en payload', payload);
+      return;
+    }
 
-          if (orderError) {
-            console.error('Error obteniendo orden:', orderError);
-            return;
-          }
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('table_id')
+      .eq('id', orderId)
+      .single();
 
-          // Obtener información de la mesa y mesero
-          const { data: table, error: tableError } = await supabase
-            .from('tables')
-            .select('waiter_id, table_number')
-            .eq('id', order.table_id)
-            .single();
+    if (orderError || !order?.table_id) {
+      console.error('❌ Webhook new-batch: error orden', orderError);
+      return;
+    }
 
-          if (tableError || !table.waiter_id) {
-            console.error('Error obteniendo mesa o mesero:', tableError);
-            return;
-          }
+    const { data: table, error: tableError } = await supabase
+      .from('tables')
+      .select('waiter_id, table_number')
+      .eq('id', order.table_id)
+      .single();
 
-          // Enviar notificación push
-          const response = await fetch(`${process.env.SERVICE_URL || 'http://localhost:3000'}/api/send-push`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              waiter_id: table.waiter_id,
-              title: 'Nuevo envío recibido',
-              body: `Mesa ${table.table_number} tiene un nuevo envío`,
-              url: '/',
-              data: {
-                batchId: payload.new.id,
-                orderId: payload.new.order_id,
-                tableNumber: table.table_number
-              }
-            })
-          });
+    if (tableError || !table?.waiter_id) {
+      console.error('❌ Webhook new-batch: error mesa/mesero', tableError);
+      return;
+    }
 
-          const result = await response.json();
-          console.log('✅ Notificación enviada:', result);
-        } catch (error) {
-          console.error('❌ Error procesando nuevo batch:', error);
-        }
-      }
-    )
-    .subscribe();
+    const result = await sendPushToWaiter(
+      table.waiter_id,
+      'Nuevo envío recibido',
+      `Mesa ${table.table_number} tiene un nuevo envío`,
+      '/',
+      { batchId: record.id, orderId, tableNumber: table.table_number }
+    );
 
-  console.log('✅ Listener configurado correctamente');
-}
+    console.log('✅ Push enviado:', result);
+  } catch (error) {
+    console.error('❌ Webhook new-batch error:', error);
+  }
+});
 
 // Iniciar servidor
 app.listen(PORT, () => {
   console.log(`🚀 Push Service corriendo en puerto ${PORT}`);
-  console.log(`📡 Health check: http://localhost:${PORT}/health`);
-  console.log(`🔑 VAPID Public Key: ${VAPID_PUBLIC_KEY.substring(0, 20)}...`);
-  
-  // Configurar listener de Supabase
-  setupRealtimeListener();
+  console.log(`📡 Health: http://localhost:${PORT}/health`);
+  console.log(`🔑 VAPID: ${VAPID_PUBLIC_KEY?.substring(0, 20)}...`);
 });
