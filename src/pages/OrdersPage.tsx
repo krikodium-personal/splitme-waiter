@@ -1450,7 +1450,13 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
   // Crear array combinado de todas las mesas asignadas (con y sin órdenes)
   // IMPORTANTE: Este hook debe estar ANTES del return condicional para cumplir las reglas de Hooks
   const allTablesWithStatus = useMemo(() => {
-    return allAssignedTables.map(table => {
+    console.log('[OrdersPage] Construyendo allTablesWithStatus:', { 
+      allAssignedTablesCount: allAssignedTables.length, 
+      ordersCount: orders.length,
+      allAssignedTables: allAssignedTables 
+    });
+    
+    const result = allAssignedTables.map(table => {
       const orderForTable = orders.find(o => o.table_id === table.id);
       if (orderForTable) {
         const status = getOrderTableStatus(orderForTable);
@@ -1487,7 +1493,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
         };
       } else {
         // Mesa sin orden = LIBRE (verde)
-        return {
+        const mesaInfo = {
           tableId: table.id,
           tableNumber: table.table_number,
           orderId: null,
@@ -1495,8 +1501,13 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
           statusColorClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
           hasOrder: false
         };
+        console.log('[OrdersPage] Mesa sin orden:', mesaInfo);
+        return mesaInfo;
       }
     });
+    
+    console.log('[OrdersPage] Resultado allTablesWithStatus:', result);
+    return result;
   }, [allAssignedTables, orders]);
 
   // Ejecutar navegación pendiente cuando las órdenes estén cargadas
