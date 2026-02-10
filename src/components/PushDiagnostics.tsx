@@ -167,19 +167,26 @@ export const PushDiagnostics: React.FC<{ waiterId?: string }> = ({ waiterId }) =
 
     // 8. Verificar VAPID Key configurada
     const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
-    if (vapidKey) {
+    console.log('[Diagnóstico] VAPID Key check:', {
+      exists: !!vapidKey,
+      length: vapidKey?.length || 0,
+      preview: vapidKey ? `${vapidKey.substring(0, 20)}...` : 'undefined',
+      allEnvKeys: Object.keys(import.meta.env).filter(k => k.startsWith('VITE_'))
+    });
+    
+    if (vapidKey && vapidKey.trim().length > 0) {
       results.push({
         name: 'VAPID Public Key',
         status: 'success',
         message: 'Configurada',
-        details: `Key: ${vapidKey.substring(0, 20)}...`
+        details: `Key: ${vapidKey.substring(0, 20)}... (${vapidKey.length} caracteres)`
       });
     } else {
       results.push({
         name: 'VAPID Public Key',
         status: 'error',
         message: 'No configurada',
-        details: 'Necesitas configurar VITE_VAPID_PUBLIC_KEY en las variables de entorno'
+        details: 'Necesitas configurar VITE_VAPID_PUBLIC_KEY en Vercel Environment Variables y hacer redeploy. Verifica que esté en Production environment.'
       });
     }
 
