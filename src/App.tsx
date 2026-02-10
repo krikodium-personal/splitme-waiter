@@ -130,38 +130,54 @@ const App: React.FC = () => {
     if (!waiter) return;
 
     const handleMessage = (event: MessageEvent) => {
+      console.log('[App] Mensaje recibido del SW:', event.data);
       if (event.data?.type === 'NOTIFICATION_CLICK') {
         const { orderId, batchId, tableNumber } = event.data.data || {};
         if (orderId) {
           console.log('[App] Notificación click recibida:', { orderId, batchId, tableNumber });
           // Guardar intención de navegar en localStorage (para que OrdersPage la ejecute cuando esté listo)
-          localStorage.setItem('pendingNavigation', JSON.stringify({
+          const pendingNav = {
             orderId,
             batchId,
             tableNumber,
             timestamp: Date.now()
-          }));
+          };
+          localStorage.setItem('pendingNavigation', JSON.stringify(pendingNav));
+          console.log('[App] Navegación pendiente guardada:', pendingNav);
+          
           // Marcar el batch como nuevo en localStorage
           if (batchId) {
             const newBatches = JSON.parse(localStorage.getItem('newBatches') || '[]');
             if (!newBatches.includes(batchId)) {
               newBatches.push(batchId);
               localStorage.setItem('newBatches', JSON.stringify(newBatches));
+              console.log('[App] Batch marcado como nuevo:', batchId);
             }
           }
+          
           // Intentar navegar inmediatamente si tableMenuData está disponible
           if (tableMenuData) {
             console.log('[App] Navegando inmediatamente desde notificación');
             tableMenuData.onTableClick(orderId);
             localStorage.removeItem('pendingNavigation');
+          } else {
+            console.log('[App] tableMenuData no disponible aún, navegación se ejecutará cuando OrdersPage esté listo');
           }
         }
       }
     };
 
-    navigator.serviceWorker?.addEventListener('message', handleMessage);
+    // Registrar listener tanto en navigator.serviceWorker como en window
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.addEventListener('message', handleMessage);
+    }
+    window.addEventListener('message', handleMessage);
+    
     return () => {
-      navigator.serviceWorker?.removeEventListener('message', handleMessage);
+      if (navigator.serviceWorker) {
+        navigator.serviceWorker.removeEventListener('message', handleMessage);
+      }
+      window.removeEventListener('message', handleMessage);
     };
   }, [waiter, tableMenuData]);
 
