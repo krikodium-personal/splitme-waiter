@@ -1083,7 +1083,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
       if (tableIds.length > 0) {
         const { data: tables, error: tablesError } = await supabase
           .from('tables')
-          .select('id, table_number')
+          .select('id, table_number, status')
           .in('id', tableIds);
         if (tablesError) {
           console.error('Error al cargar tables:', tablesError);
@@ -1204,7 +1204,10 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
 
         return {
           ...order,
-          tables: tableInfo ? { table_number: tableInfo.table_number } : null,
+          tables: tableInfo ? { 
+            table_number: tableInfo.table_number,
+            status: tableInfo.status 
+          } : null,
           order_batches: orderBatches,
           order_guests: guestsWithPayments,
           lastActivity
@@ -1212,12 +1215,23 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
       });
 
       // Filtrar órdenes: excluir aquellas que solo tienen batches con status 'CREADO'
+      // También excluir órdenes cerradas cuando la mesa tiene status 'Libre'
       const filteredOrders = processedOrders.filter(order => {
           const batches = order.order_batches || [];
           // Si no tiene batches, no mostrar
           if (batches.length === 0) {
             return false;
           }
+          
+          // Si la orden está cerrada, verificar el status de la mesa
+          if (order.status === 'CERRADO') {
+            const tableInfo = tablesData.find(t => t.id === order.table_id);
+            // Si la mesa tiene status 'Libre', no mostrar la orden
+            if (tableInfo?.status === 'Libre') {
+              return false;
+            }
+          }
+          
           // Si tiene batches, verificar si al menos uno NO es 'CREADO'
           const hasNonCreatedBatch = batches.some((batch: any) => batch.status !== 'CREADO');
           return hasNonCreatedBatch;
