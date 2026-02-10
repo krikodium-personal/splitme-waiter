@@ -1,0 +1,29 @@
+# Reglas de Cursor para Splitme Waiter
+
+## REGLA CRÍTICA: Versionado en Deploy
+
+**CADA VEZ QUE HAGAS DEPLOY A GITHUB, DEBES INCREMENTAR LA VERSIÓN AUTOMÁTICAMENTE**
+
+### Proceso obligatorio antes de cada push a GitHub:
+
+1. **SIEMPRE** incrementa la versión antes de hacer commit y push
+2. Usa el script de deploy: `npm run deploy` o `bash scripts/deploy.sh`
+3. O manualmente: `npm run version:patch` antes de hacer commit
+
+### El script de deploy (`scripts/deploy.sh`) hace automáticamente:
+- Incrementa la versión patch
+- Actualiza `package.json`
+- Actualiza `src/version.ts` 
+- Actualiza `CHANGELOG.md`
+- Hace commit con mensaje que incluye la versión
+- Hace push a GitHub
+
+### NUNCA hagas `git push` sin antes incrementar la versión
+
+### Si olvidaste incrementar la versión:
+1. Detén el proceso
+2. Ejecuta `npm run version:patch`
+3. Haz commit de los cambios de versión
+4. Luego continúa con el push
+
+### El footer de la app DEBE mostrar siempre la versión correcta después de cada deploy

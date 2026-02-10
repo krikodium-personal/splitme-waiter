@@ -39,7 +39,21 @@ node scripts/version.js [patch|minor|major]
 
 ## Proceso de Deploy con Versión
 
-Cuando hagas cambios y quieras hacer deploy:
+**⚠️ REGLA CRÍTICA: NUNCA hagas deploy sin incrementar la versión primero**
+
+### Opción 1: Usar script de deploy (RECOMENDADO)
+
+El script incrementa la versión automáticamente antes de hacer push:
+
+```bash
+# Deploy con mensaje automático
+npm run deploy
+
+# O con mensaje personalizado
+bash scripts/deploy.sh "feat: descripción de cambios"
+```
+
+### Opción 2: Proceso manual
 
 1. **Haz tus cambios** en el código
 2. **Actualiza el CHANGELOG.md** con los cambios realizados
@@ -53,6 +67,8 @@ Cuando hagas cambios y quieras hacer deploy:
    git commit -m "feat: descripción de cambios - v$(node -p "require('./package.json').version")"
    git push
    ```
+
+**IMPORTANTE:** El footer de la app siempre debe mostrar la versión correcta después de cada deploy.
 
 El script de versión automáticamente:
 - ✅ Actualiza `package.json`
