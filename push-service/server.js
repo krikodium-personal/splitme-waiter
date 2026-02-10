@@ -179,16 +179,29 @@ app.get('/health', (req, res) => {
 
 /**
  * Webhook para Supabase Database Webhooks.
+ * Se dispara en UPDATE cuando un batch cambia a estado "ENVIADO".
+ * Configurar en Supabase: Database → Webhooks → UPDATE en order_batches.
  * En Vercel hay que hacer TODO el trabajo antes de responder;
  * si respondemos 202 antes, la función puede terminar y el push no se envía.
  */
-app.post('/api/webhook/new-batch', async (req, res) => {
+app.post('/api/webhook/batch-enviado', async (req, res) => {
   try {
     const payload = req.body;
+    // En UPDATE, Supabase envía: { type: 'UPDATE', table: 'order_batches', record: {...}, old_record: {...} }
     const record = payload.record || payload.new || payload;
+    const oldRecord = payload.old_record || payload.old;
     const orderId = record?.order_id;
+    const batchId = record?.id;
+    const newStatus = record?.status;
+    const oldStatus = oldRecord?.status;
 
-    console.log('[webhook] new-batch received', { orderId, batchId: record?.id });
+    console.log('[webhook] batch-enviado received', { batchId, orderId, newStatus, oldStatus });
+
+    // Solo notificar si el estado cambió a "ENVIADO"
+    if (newStatus !== 'ENVIADO' || oldStatus === 'ENVIADO') {
+      console.log('[webhook] ignorando: estado no es ENVIADO o ya era ENVIADO', { newStatus, oldStatus });
+      return res.status(200).json({ ok: true, skipped: true, reason: 'status_not_enviado' });
+    }
 
     if (!orderId) {
       console.error('[webhook] falta order_id', payload);
@@ -219,12 +232,15 @@ app.post('/api/webhook/new-batch', async (req, res) => {
 
     console.log('[webhook] enviando push a waiter_id=', table.waiter_id, 'mesa', table.table_number);
 
+    // URL con parámetros para navegar a la mesa específica
+    const url = `/?orderId=${orderId}&batchId=${batchId}&tableNumber=${table.table_number}`;
+
     const result = await sendPushToWaiter(
       table.waiter_id,
       'Nuevo envío recibido',
       `Mesa ${table.table_number} tiene un nuevo envío`,
-      '/',
-      { batchId: record.id, orderId, tableNumber: table.table_number }
+      url,
+      { batchId, orderId, tableNumber: table.table_number }
     );
 
     console.log('[webhook] resultado sendPushToWaiter:', result);

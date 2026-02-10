@@ -73,9 +73,16 @@ const BatchCard: React.FC<{
   batch: any, 
   batchIndex: number,
   onUpdateBatchStatus: (batchId: string, newStatus: string) => void,
-  isArchived?: boolean
-}> = ({ batch, batchIndex, onUpdateBatchStatus }) => {
+  isArchived?: boolean,
+  isNew?: boolean
+}> = ({ batch, batchIndex, onUpdateBatchStatus, isNew = false }) => {
   const [isExpanded, setIsExpanded] = useState(batch.status !== 'SERVIDO');
+  const [localIsNew, setLocalIsNew] = useState(isNew);
+
+  // Sincronizar con prop isNew
+  useEffect(() => {
+    setLocalIsNew(isNew);
+  }, [isNew]);
 
   // Colapsar automáticamente cuando el batch se marca como SERVIDO
   useEffect(() => {
@@ -106,7 +113,16 @@ const BatchCard: React.FC<{
         : 'shadow-sm border-gray-200 bg-white'
     }`}>
       <div 
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => {
+          setIsExpanded(!isExpanded);
+          // Limpiar "nuevo" cuando se expande el batch
+          if (!isExpanded && localIsNew) {
+            setLocalIsNew(false);
+            const newBatches = JSON.parse(localStorage.getItem('newBatches') || '[]');
+            const updated = newBatches.filter((id: string) => id !== batch.id);
+            localStorage.setItem('newBatches', JSON.stringify(updated));
+          }
+        }}
         className={`px-5 py-3.5 cursor-pointer transition-colors border-b ${
           isExpanded ? 'bg-indigo-50/30 border-gray-100' : 'bg-gray-50/80 border-transparent'
         } hover:bg-indigo-50/50`}
@@ -126,6 +142,11 @@ const BatchCard: React.FC<{
               {batch.status !== 'SERVIDO' && (
                 <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase border transition-colors ${currentStatus.color}`}>
                   {batch.status}
+                </span>
+              )}
+              {localIsNew && batch.status !== 'SERVIDO' && (
+                <span className="px-2 py-0.5 rounded-lg text-[8px] font-black uppercase bg-red-500 text-white border border-red-600 animate-pulse">
+                  NUEVO
                 </span>
               )}
             </div>
@@ -282,6 +303,24 @@ export const OrderGroupCard: React.FC<{
   // Filtrar lotes: no mostrar los que están en estado "CREADO"
   const batches = allBatches.filter((batch: any) => batch.status !== 'CREADO');
 
+  // Obtener batches nuevos desde localStorage
+  const [newBatches, setNewBatches] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('newBatches') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  // Limpiar batch de "nuevo" cuando se interactúa con él
+  const handleBatchInteraction = (batchId: string) => {
+    setNewBatches(prev => {
+      const updated = prev.filter(id => id !== batchId);
+      localStorage.setItem('newBatches', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   // Calcular el estado de la mesa según los criterios:
   // Abierta: Tiene batches en CREADO, ENVIADO, PREPARANDO y/o algún guest tiene paid=FALSE con individual_amount > 0
   // Pagada: Todos los guests tienen paid=TRUE y order status='Pagado'
@@ -422,13 +461,18 @@ export const OrderGroupCard: React.FC<{
           {batches.length > 0 ? (
             batches.map((batch: any, idx: number) => {
               const batchNumber = batchNumberMap.get(batch.id) || (idx + 1);
+              const isNew = newBatches.includes(batch.id);
               return (
               <BatchCard 
                 key={batch.id} 
                 batch={batch} 
                 batchIndex={batchNumber - 1} 
-                onUpdateBatchStatus={onUpdateBatchStatus}
+                onUpdateBatchStatus={(batchId, newStatus) => {
+                  handleBatchInteraction(batchId);
+                  onUpdateBatchStatus(batchId, newStatus);
+                }}
                 isArchived={propIsClosed}
+                isNew={isNew}
               />
               );
             })
@@ -603,6 +647,24 @@ const OrderDetailContent: React.FC<{
     batchNumberMap.set(batch.id, index + 1);
   });
   
+  // Obtener batches nuevos desde localStorage
+  const [newBatches, setNewBatches] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('newBatches') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  // Limpiar batch de "nuevo" cuando se interactúa con él
+  const handleBatchInteraction = (batchId: string) => {
+    setNewBatches(prev => {
+      const updated = prev.filter(id => id !== batchId);
+      localStorage.setItem('newBatches', JSON.stringify(updated));
+      return updated;
+    });
+  };
+  
   const status = getOrderTableStatus(order);
 
   const guestsWithAmount = order.order_guests?.filter((g: any) => (g.individual_amount || 0) > 0) ?? [];
@@ -640,13 +702,18 @@ const OrderDetailContent: React.FC<{
         <div className="space-y-3">
           {batches.map((batch: any, idx: number) => {
             const batchNumber = batchNumberMap.get(batch.id) || (idx + 1);
+            const isNew = newBatches.includes(batch.id);
             return (
               <BatchCard
                 key={batch.id}
                 batch={batch}
                 batchIndex={batchNumber - 1}
-                onUpdateBatchStatus={onUpdateBatchStatus}
+                onUpdateBatchStatus={(batchId, newStatus) => {
+                  handleBatchInteraction(batchId);
+                  onUpdateBatchStatus(batchId, newStatus);
+                }}
                 isArchived={isClosed}
+                isNew={isNew}
               />
             );
           })}

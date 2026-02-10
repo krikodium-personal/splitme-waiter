@@ -125,6 +125,61 @@ const App: React.FC = () => {
       });
   }, [waiter?.id]);
 
+  // Escuchar mensajes del service worker cuando se hace click en una notificación
+  useEffect(() => {
+    if (!waiter || !tableMenuData) return;
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'NOTIFICATION_CLICK') {
+        const { orderId, batchId, tableNumber } = event.data.data || {};
+        if (orderId && tableMenuData) {
+          console.log('[App] Navegando desde notificación:', { orderId, batchId, tableNumber });
+          // Marcar el batch como nuevo en localStorage
+          if (batchId) {
+            const newBatches = JSON.parse(localStorage.getItem('newBatches') || '[]');
+            if (!newBatches.includes(batchId)) {
+              newBatches.push(batchId);
+              localStorage.setItem('newBatches', JSON.stringify(newBatches));
+            }
+          }
+          // Navegar a la mesa
+          tableMenuData.onTableClick(orderId);
+        }
+      }
+    };
+
+    navigator.serviceWorker?.addEventListener('message', handleMessage);
+    return () => {
+      navigator.serviceWorker?.removeEventListener('message', handleMessage);
+    };
+  }, [waiter, tableMenuData]);
+
+  // Manejar parámetros de URL cuando se abre desde una notificación
+  useEffect(() => {
+    if (!waiter || !tableMenuData) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const orderId = params.get('orderId');
+    const batchId = params.get('batchId');
+    const tableNumber = params.get('tableNumber');
+
+    if (orderId && tableMenuData) {
+      console.log('[App] Navegando desde URL params:', { orderId, batchId, tableNumber });
+      // Marcar el batch como nuevo en localStorage
+      if (batchId) {
+        const newBatches = JSON.parse(localStorage.getItem('newBatches') || '[]');
+        if (!newBatches.includes(batchId)) {
+          newBatches.push(batchId);
+          localStorage.setItem('newBatches', JSON.stringify(newBatches));
+        }
+      }
+      // Navegar a la mesa
+      tableMenuData.onTableClick(orderId);
+      // Limpiar URL params
+      window.history.replaceState({}, '', '/');
+    }
+  }, [waiter, tableMenuData]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
