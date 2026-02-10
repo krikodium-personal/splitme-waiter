@@ -397,6 +397,8 @@ const App: React.FC = () => {
                   const isSelected = tableInfo.orderId === tableMenuData.selectedOrderId;
                   const canSelect = tableInfo.hasOrder;
                   const isBlinking = blinkingTableIds.has(tableInfo.tableId);
+                  // Debug: verificar datos
+                  console.log('[App] Renderizando mesa:', { tableNumber: tableInfo.tableNumber, status: tableInfo.status, hasOrder: tableInfo.hasOrder });
                   return (
                     <button
                       key={tableInfo.tableId}
@@ -422,14 +424,16 @@ const App: React.FC = () => {
                       } ${isBlinking ? 'animate-pulse ring-4 ring-red-400 ring-opacity-75' : ''}`}
                     >
                       <span className={`text-2xl font-black tracking-tighter ${isSelected ? 'text-white' : canSelect ? 'text-indigo-600' : 'text-slate-700'}`}>
-                        {tableInfo.tableNumber}
+                        {tableInfo.tableNumber || '?'}
                       </span>
                       <span className={`text-[9px] font-black uppercase tracking-widest ${isSelected ? 'opacity-90' : 'opacity-80'}`}>
                         Mesa
                       </span>
-                      <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase border ${isSelected ? 'bg-white/20 border-white/30 text-white' : tableInfo.statusColorClass}`}>
-                        {tableInfo.status}
-                      </span>
+                      {tableInfo.status && (
+                        <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase border ${isSelected ? 'bg-white/20 border-white/30 text-white' : tableInfo.statusColorClass || 'bg-emerald-100 text-emerald-800 border-emerald-200'}`}>
+                          {tableInfo.status}
+                        </span>
+                      )}
                     </button>
                   );
                 })}

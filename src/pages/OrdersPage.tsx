@@ -1541,6 +1541,8 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
   // IMPORTANTE: Este hook también debe estar ANTES del return condicional
   useEffect(() => {
     if (onTableMenuData && !loading) {
+      // Debug: verificar que los datos estén correctos
+      console.log('[OrdersPage] Enviando allTablesWithStatus:', allTablesWithStatus);
       onTableMenuData({
         allTablesWithStatus,
         selectedOrderId: effectiveSelectedId,
