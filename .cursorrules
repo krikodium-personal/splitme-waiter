@@ -27,3 +27,11 @@
 4. Luego continúa con el push
 
 ### El footer de la app DEBE mostrar siempre la versión correcta después de cada deploy
+
+## Configuración de Push Notifications
+
+Para que las push notifications funcionen, se requiere:
+1. Generar claves VAPID: `npx web-push generate-vapid-keys`
+2. Configurar `VITE_VAPID_PUBLIC_KEY` en Vercel Environment Variables
+3. Configurar `VITE_PUSH_SUBSCRIPTION_URL` en Vercel (opcional, para backend)
+4. Ver documentación completa en `CONFIGURAR-VAPID.md`
