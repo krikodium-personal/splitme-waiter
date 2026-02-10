@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Bell, LogOut, Loader2, BellRing } from 'lucide-react';
+import { Bell, LogOut, Loader2, BellRing, X } from 'lucide-react';
 import { supabase } from './supabase';
 import LoginPage from './pages/LoginPage';
 import OrdersPage from './pages/OrdersPage';
-import { isPushSupported, getNotificationPermission, registerPushSubscription } from './pushNotifications';
+import { isPushSupported } from './pushNotifications';
 import type { Waiter } from './types';
 import { APP_VERSION } from './version';
+import { PushDiagnostics } from './components/PushDiagnostics';
 
 interface Restaurant {
   id: string;
@@ -30,8 +31,8 @@ const App: React.FC = () => {
   const [waiterTableIds, setWaiterTableIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [pushRegistering, setPushRegistering] = useState(false);
   const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
+  const [showPushDiagnostics, setShowPushDiagnostics] = useState(false);
   const [blinkingTableIds, setBlinkingTableIds] = useState<Set<string>>(new Set());
   const [tableMenuData, setTableMenuData] = useState<{
     allTablesWithStatus: Array<{
@@ -68,15 +69,6 @@ const App: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showNotificationsPanel]);
 
-  const handleEnablePush = async () => {
-    if (!waiter?.id) return;
-    setPushRegistering(true);
-    try {
-      await registerPushSubscription(waiter.id);
-    } finally {
-      setPushRegistering(false);
-    }
-  };
 
   const handleLoginSuccess = (w: Waiter, r: Restaurant) => {
     setWaiter(w);
@@ -169,15 +161,14 @@ const App: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {isPushSupported() && getNotificationPermission() !== 'granted' && (
+            {isPushSupported() && (
               <button
-                onClick={handleEnablePush}
-                disabled={pushRegistering}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase tracking-wider hover:bg-indigo-100 disabled:opacity-70"
-                title="Activar notificaciones push"
+                onClick={() => setShowPushDiagnostics(!showPushDiagnostics)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase tracking-wider hover:bg-indigo-100"
+                title="Diagnóstico de push notifications"
               >
                 <BellRing size={14} />
-                {pushRegistering ? '...' : 'Push'}
+                Push
               </button>
             )}
             <button
@@ -402,6 +393,26 @@ const App: React.FC = () => {
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        
+        {/* Panel de diagnóstico de push notifications */}
+        {showPushDiagnostics && (
+          <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowPushDiagnostics(false)}>
+            <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+                <h2 className="text-lg font-black text-slate-900">Diagnóstico de Push Notifications</h2>
+                <button
+                  onClick={() => setShowPushDiagnostics(false)}
+                  className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+                >
+                  <X size={18} className="text-slate-600" />
+                </button>
+              </div>
+              <div className="p-6">
+                <PushDiagnostics waiterId={waiter?.id} />
+              </div>
+            </div>
+          </div>
+        )}
       </main>
       
       {/* Footer con versión */}
