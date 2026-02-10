@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Clock, CheckCircle2, Utensils, Hash, 
   MessageSquare, Play, Check, 
-  Timer, AlertCircle, Loader2, ChevronDown, ChevronUp, BellRing, X,
+  Timer, AlertCircle, Loader2, ChevronDown, ChevronUp, X,
   Maximize2, Minimize2, Copy, RefreshCw
 } from 'lucide-react';
 import { supabase } from '../supabase';
@@ -12,6 +12,27 @@ interface OrdersPageProps {
   restaurant: { id: string; name: string };
   waiterTableIds: string[];
   onNewBatch?: () => void;
+  onTableMenuData?: (data: {
+    allTablesWithStatus: Array<{
+      tableId: string;
+      tableNumber: number;
+      orderId: string | null;
+      status: string;
+      statusColorClass: string;
+      hasOrder: boolean;
+    }>;
+    selectedOrderId: string | null;
+    onTableClick: (orderId: string | null) => void;
+    tableStripRef: React.RefObject<HTMLDivElement | null>;
+    isDraggingStrip: boolean;
+    handlers: {
+      onPointerDown: (e: React.PointerEvent) => void;
+      onPointerMove: (e: React.PointerEvent) => void;
+      onPointerUp: (e: React.PointerEvent) => void;
+      onPointerLeave: () => void;
+      onPointerCancel: (e: React.PointerEvent) => void;
+    };
+  }) => void;
 }
 
 /** Calcula el estado de la mesa para mostrar en chip o detalle */
@@ -86,17 +107,18 @@ const BatchCard: React.FC<{
     }`}>
       <div 
         onClick={() => setIsExpanded(!isExpanded)}
-        className={`px-5 py-3.5 flex items-center justify-between cursor-pointer transition-colors border-b ${
+        className={`px-5 py-3.5 cursor-pointer transition-colors border-b ${
           isExpanded ? 'bg-indigo-50/30 border-gray-100' : 'bg-gray-50/80 border-transparent'
         } hover:bg-indigo-50/50`}
       >
-        <div className="flex items-center gap-4">
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-[10px] transition-all duration-500 transform ${
-            batch.status === 'SERVIDO' ? 'bg-emerald-500 text-white scale-90 rotate-[360deg]' : 'bg-slate-800 text-white shadow-md'
-          }`}>
-            {batch.status === 'SERVIDO' ? <CheckCircle2 size={16} /> : `#${batchIndex + 1}`}
-          </div>
-          <div>
+        {/* Primera línea: Badge #, ENVÍO # y pill de estado */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-[10px] transition-all duration-500 transform shrink-0 ${
+              batch.status === 'SERVIDO' ? 'bg-emerald-500 text-white scale-90 rotate-[360deg]' : 'bg-slate-800 text-white shadow-md'
+            }`}>
+              {batch.status === 'SERVIDO' ? <CheckCircle2 size={16} /> : `#${batchIndex + 1}`}
+            </div>
             <div className="flex items-center gap-2">
               <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">
                 {batch.status === 'SERVIDO' ? `ENVÍO # ${batchIndex + 1} SERVIDO` : `ENVÍO # ${batchIndex + 1}`}
@@ -107,36 +129,35 @@ const BatchCard: React.FC<{
                 </span>
               )}
             </div>
-            <p className="text-[9px] text-slate-500 font-bold flex items-center gap-1 mt-0.5">
-              <Timer size={10} /> {new Date(batch.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </p>
+          </div>
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shrink-0 ${isExpanded ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
+            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </div>
         </div>
 
-        <div className="flex flex-col items-end gap-2" onClick={e => e.stopPropagation()}>
-          <div className="flex items-center gap-3">
-            {currentStatus.next && (
-              <button 
-                onClick={() => onUpdateBatchStatus(batch.id, currentStatus.next!)}
-                className={`flex items-center gap-2 px-3 py-1.5 text-white rounded-xl font-black text-[9px] uppercase tracking-widest transition-all shadow-sm active:scale-95 ${
-                  batch.status === 'ENVIADO' 
-                    ? 'bg-red-600 hover:bg-red-700'
-                    : batch.status === 'PREPARANDO'
-                    ? 'bg-indigo-600 hover:bg-indigo-700'
-                    : batch.status === 'LISTO'
-                    ? 'bg-green-600 hover:bg-green-700'
-                    : 'bg-indigo-600 hover:bg-indigo-700'
-                }`}
-              >
-                <currentStatus.icon size={10} /> {currentStatus.label}
-              </button>
-            )}
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isExpanded ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
-              {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </div>
+        {/* Segunda línea: Tiempo y CTA */}
+        <div className="flex items-center justify-between" onClick={e => e.stopPropagation()}>
+          <p className="text-[9px] text-slate-500 font-bold flex items-center gap-1">
+            <Timer size={10} /> {new Date(batch.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </p>
+          {currentStatus.next && (
+            <button 
+              onClick={() => onUpdateBatchStatus(batch.id, currentStatus.next!)}
+              className={`flex items-center gap-2 px-3 py-1.5 text-white rounded-xl font-black text-[9px] uppercase tracking-widest transition-all shadow-sm active:scale-95 shrink-0 ${
+                batch.status === 'ENVIADO' 
+                  ? 'bg-red-600 hover:bg-red-700'
+                  : batch.status === 'PREPARANDO'
+                  ? 'bg-indigo-600 hover:bg-indigo-700'
+                  : batch.status === 'LISTO'
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-indigo-600 hover:bg-indigo-700'
+              }`}
+            >
+              <currentStatus.icon size={10} /> {currentStatus.label}
+            </button>
+          )}
         </div>
       </div>
-    </div>
 
       <div className={`transition-all duration-500 ease-in-out ${isExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'} overflow-hidden`}>
         <div className="px-5 pb-5 pt-3 space-y-2">
@@ -564,14 +585,14 @@ const OrderDetailContent: React.FC<{
   return (
     <div className="space-y-6 min-w-0 w-full">
       {/* 1. Header separado: Total acumulado + N envíos + Cerrar mesa */}
-      <div className="px-6 py-5 bg-slate-50 rounded-2xl border border-gray-100 shadow-sm">
+      <div className="px-6 py-5 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl border border-indigo-400 shadow-lg">
         <div className="flex flex-wrap justify-between items-center gap-4">
           <div>
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total acumulado</p>
-            <p className="text-2xl font-black text-indigo-600 tracking-tighter">${Number(order.total_amount).toLocaleString('es-CL')}</p>
+            <p className="text-[9px] font-black text-indigo-100 uppercase tracking-widest mb-0.5">Total acumulado</p>
+            <p className="text-2xl font-black text-white tracking-tighter">${Number(order.total_amount).toLocaleString('es-CL')}</p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="px-4 py-1.5 bg-indigo-50 text-indigo-700 rounded-full text-[9px] font-black uppercase tracking-widest border border-indigo-100">
+            <span className="px-4 py-1.5 bg-white/20 backdrop-blur-sm text-white rounded-full text-[9px] font-black uppercase tracking-widest border border-white/30">
               {batches.length} {batches.length === 1 ? 'Envío' : 'Envíos'}
             </span>
             {status.isMesaListaParaCerrar && (
@@ -680,8 +701,9 @@ const OrderDetailContent: React.FC<{
   );
 };
 
-const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onNewBatch }) => {
+const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onNewBatch, onTableMenuData }) => {
   const [orders, setOrders] = useState<any[]>([]);
+  const [allAssignedTables, setAllAssignedTables] = useState<Array<{ id: string; table_number: number }>>([]);
   const [loading, setLoading] = useState(true);
   const [toggleLoading, setToggleLoading] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -701,6 +723,27 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
 
   useEffect(() => {
     waiterTableIdsRef.current = waiterTableIds;
+  }, [waiterTableIds]);
+
+  // Obtener todas las mesas asignadas con sus números
+  useEffect(() => {
+    if (waiterTableIds.length === 0) {
+      setAllAssignedTables([]);
+      return;
+    }
+    supabase
+      .from('tables')
+      .select('id, table_number')
+      .in('id', waiterTableIds)
+      .order('table_number', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Error al cargar mesas asignadas:', error);
+          setAllAssignedTables([]);
+        } else {
+          setAllAssignedTables((data || []).map((t: any) => ({ id: t.id, table_number: t.table_number })));
+        }
+      });
   }, [waiterTableIds]);
 
   useEffect(() => {
@@ -810,7 +853,8 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
     setIsDraggingStrip(false);
   };
 
-  const handleTableChipClick = (orderId: string) => {
+  const handleTableChipClick = (orderId: string | null) => {
+    if (!orderId) return;
     if (stripDragStart.current.moved) {
       stripDragStart.current.moved = false;
       return;
@@ -1177,6 +1221,56 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
     }
   };
 
+  // Crear array combinado de todas las mesas asignadas (con y sin órdenes)
+  // IMPORTANTE: Este hook debe estar ANTES del return condicional para cumplir las reglas de Hooks
+  const allTablesWithStatus = useMemo(() => {
+    return allAssignedTables.map(table => {
+      const orderForTable = orders.find(o => o.table_id === table.id);
+      if (orderForTable) {
+        const status = getOrderTableStatus(orderForTable);
+        return {
+          tableId: table.id,
+          tableNumber: table.table_number,
+          orderId: orderForTable.id,
+          status: status.label,
+          statusColorClass: status.colorClass,
+          hasOrder: true
+        };
+      } else {
+        return {
+          tableId: table.id,
+          tableNumber: table.table_number,
+          orderId: null,
+          status: 'LIBRE',
+          statusColorClass: 'bg-gray-100 text-gray-600 border-gray-200',
+          hasOrder: false
+        };
+      }
+    });
+  }, [allAssignedTables, orders]);
+
+  // Exponer datos del menú a App.tsx
+  // IMPORTANTE: Este hook también debe estar ANTES del return condicional
+  useEffect(() => {
+    if (onTableMenuData && !loading) {
+      onTableMenuData({
+        allTablesWithStatus,
+        selectedOrderId: effectiveSelectedId,
+        onTableClick: handleTableChipClick,
+        tableStripRef,
+        isDraggingStrip,
+        handlers: {
+          onPointerDown: handleTableStripPointerDown,
+          onPointerMove: handleTableStripPointerMove,
+          onPointerUp: handleTableStripPointerUp,
+          onPointerLeave: handleTableStripPointerLeave,
+          onPointerCancel: handleTableStripPointerUp,
+        },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allTablesWithStatus, effectiveSelectedId, isDraggingStrip, loading]);
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-40 gap-4">
@@ -1187,67 +1281,8 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
   }
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-700 pb-20">
-      <div className="flex flex-col gap-6">
-        <div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tighter flex items-center gap-3">
-            Kitchen Monitor <BellRing className="text-indigo-600 animate-pulse" size={32} />
-          </h1>
-          <p className="text-slate-500 mt-1 font-medium">
-            Operaciones activas en salón y cocina
-          </p>
-        </div>
-        {/* Mesas asignadas: menú horizontal (arrastrable). Siempre visible para mostrar la nueva estructura. */}
-        <div className="relative">
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Mesas asignadas</p>
-          {orders.length > 0 ? (
-            <div
-              ref={tableStripRef}
-              role="region"
-              aria-label="Mesas asignadas — arrastrar para ver más"
-              className={`overflow-x-auto overflow-y-hidden pb-3 -mx-1 flex flex-nowrap gap-3 px-1 select-none touch-pan-x overscroll-x-contain ${isDraggingStrip ? 'cursor-grabbing' : 'cursor-grab'}`}
-              style={{ WebkitOverflowScrolling: 'touch', scrollbarGutter: 'stable' }}
-              onPointerDown={handleTableStripPointerDown}
-              onPointerMove={handleTableStripPointerMove}
-              onPointerUp={handleTableStripPointerUp}
-              onPointerLeave={handleTableStripPointerLeave}
-              onPointerCancel={handleTableStripPointerUp}
-            >
-              {orders.map((order) => {
-                const status = getOrderTableStatus(order);
-                const isSelected = order.id === effectiveSelectedId;
-                return (
-                  <button
-                    key={order.id}
-                    type="button"
-                    onClick={() => handleTableChipClick(order.id)}
-                    className={`shrink-0 flex flex-col items-center justify-center gap-1.5 px-5 py-3.5 rounded-2xl border-2 transition-all duration-200 min-w-[110px] touch-manipulation ${
-                      isSelected
-                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200'
-                        : 'bg-white border-gray-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/50 active:bg-indigo-50'
-                    }`}
-                  >
-                    <span className={`text-2xl font-black tracking-tighter ${isSelected ? 'text-white' : 'text-indigo-600'}`}>
-                      {order.tables?.table_number ?? '?'}
-                    </span>
-                    <span className="text-[9px] font-black uppercase tracking-widest opacity-90">
-                      Mesa
-                    </span>
-                    <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase border ${isSelected ? 'bg-white/20 border-white/30 text-white' : status.colorClass}`}>
-                      {status.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="py-4 px-5 rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50/50 text-center">
-              <p className="text-sm font-bold text-slate-500">No hay mesas con pedidos activos</p>
-              <p className="text-[10px] text-slate-400 mt-1">Cuando tengas pedidos en tus mesas, aquí aparecerán las mesas y podrás tocar una para ver el total, envíos y división de pago.</p>
-            </div>
-          )}
-        </div>
-      </div>
+    <div className="p-8">
+      <div className="space-y-10 animate-in fade-in duration-700 pb-20">
 
       {errorMsg && (
         <div className="p-6 bg-rose-50 border-2 border-rose-100 rounded-3xl flex items-center gap-4 text-rose-600 animate-shake">
@@ -1307,6 +1342,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
            <p className="text-[10px] text-slate-400 mt-4 max-w-xs">Arriba verás «Mesas asignadas». Al haber pedidos en tus mesas, aparecerán los botones de cada mesa; al tocar uno verás el total acumulado, los envíos y la división de pago.</p>
         </div>
       )}
+      </div>
     </div>
   );
 };
