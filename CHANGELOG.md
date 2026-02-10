@@ -1,15 +1,13 @@
 # Changelog
 
-## [1.0.1] - 2026-02-10
+## [1.0.1] - 2026-02-09
 
 ### Agregado
-- 
-
-### Cambiado
-- 
-
-### Corregido
-- 
+- Sistema de diagnóstico completo para push notifications
+- Componente PushDiagnostics con verificación de 9 aspectos críticos
+- Panel modal para diagnosticar problemas de push notifications
+- Botones para registrar suscripción push y probar notificaciones locales
+- Documentación PUSH-DIAGNOSTICS.md con guía de solución de problemas
 
 
 Todas las modificaciones notables de este proyecto serán documentadas en este archivo.
