@@ -45,10 +45,16 @@ async function sendPushToWaiter(waiter_id, title, body, url = '/', data = {}) {
     .select('subscription')
     .eq('waiter_id', waiter_id);
 
-  if (error) throw error;
+  if (error) {
+    console.error('[sendPushToWaiter] error Supabase:', error);
+    throw error;
+  }
   if (!subscriptions || subscriptions.length === 0) {
+    console.log('[sendPushToWaiter] waiter_id=', waiter_id, 'sin suscripciones en push_subscriptions');
     return { total: 0, successful: 0, failed: 0 };
   }
+
+  console.log('[sendPushToWaiter] waiter_id=', waiter_id, 'suscripciones=', subscriptions.length);
 
   const payload = JSON.stringify({ title, body, url, ...data });
 
@@ -56,18 +62,21 @@ async function sendPushToWaiter(waiter_id, title, body, url = '/', data = {}) {
     subscriptions.map(async (sub) => {
       try {
         await webpush.sendNotification(sub.subscription, payload);
-        return { success: true, endpoint: sub.subscription.endpoint };
+        return { success: true, endpoint: sub.subscription?.endpoint };
       } catch (err) {
+        console.error('[sendPushToWaiter] fallo envío:', err.statusCode, err.message);
         if (err.statusCode === 410 || err.statusCode === 404) {
-          await supabase.from('push_subscriptions').delete().eq('endpoint', sub.subscription.endpoint);
+          await supabase.from('push_subscriptions').delete().eq('endpoint', sub.subscription?.endpoint);
         }
-        return { success: false, endpoint: sub.subscription.endpoint, error: err.message };
+        return { success: false, endpoint: sub.subscription?.endpoint, error: err.message };
       }
     })
   );
 
   const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
-  return { total: subscriptions.length, successful, failed: results.length - successful };
+  const summary = { total: subscriptions.length, successful, failed: results.length - successful };
+  console.log('[sendPushToWaiter] resultado:', summary);
+  return summary;
 }
 
 // Endpoint para recibir suscripciones (opcional, si prefieres guardarlas aquí)
@@ -170,23 +179,20 @@ app.get('/health', (req, res) => {
 
 /**
  * Webhook para Supabase Database Webhooks.
- * Configura en Supabase: Database → Webhooks → INSERT en order_batches.
- * En Vercel serverless no hay proceso persistente, así que Realtime no sirve;
- * este endpoint es llamado por Supabase cada vez que se inserta un batch.
+ * En Vercel hay que hacer TODO el trabajo antes de responder;
+ * si respondemos 202 antes, la función puede terminar y el push no se envía.
  */
 app.post('/api/webhook/new-batch', async (req, res) => {
-  // Responder rápido para no timeout del webhook
-  res.status(202).json({ received: true });
-
   try {
     const payload = req.body;
-    // Formato Supabase Database Webhook: { type, table, record, schema, old_record }
     const record = payload.record || payload.new || payload;
-    const orderId = record.order_id;
+    const orderId = record?.order_id;
+
+    console.log('[webhook] new-batch received', { orderId, batchId: record?.id });
 
     if (!orderId) {
-      console.error('❌ Webhook new-batch: falta order_id en payload', payload);
-      return;
+      console.error('[webhook] falta order_id', payload);
+      return res.status(400).json({ error: 'missing order_id' });
     }
 
     const { data: order, error: orderError } = await supabase
@@ -196,8 +202,8 @@ app.post('/api/webhook/new-batch', async (req, res) => {
       .single();
 
     if (orderError || !order?.table_id) {
-      console.error('❌ Webhook new-batch: error orden', orderError);
-      return;
+      console.error('[webhook] error orden', orderError);
+      return res.status(400).json({ error: 'order not found', details: orderError?.message });
     }
 
     const { data: table, error: tableError } = await supabase
@@ -207,9 +213,11 @@ app.post('/api/webhook/new-batch', async (req, res) => {
       .single();
 
     if (tableError || !table?.waiter_id) {
-      console.error('❌ Webhook new-batch: error mesa/mesero', tableError);
-      return;
+      console.error('[webhook] error mesa/mesero', tableError);
+      return res.status(400).json({ error: 'table/waiter not found', details: tableError?.message });
     }
+
+    console.log('[webhook] enviando push a waiter_id=', table.waiter_id, 'mesa', table.table_number);
 
     const result = await sendPushToWaiter(
       table.waiter_id,
@@ -219,9 +227,12 @@ app.post('/api/webhook/new-batch', async (req, res) => {
       { batchId: record.id, orderId, tableNumber: table.table_number }
     );
 
-    console.log('✅ Push enviado:', result);
+    console.log('[webhook] resultado sendPushToWaiter:', result);
+
+    return res.status(200).json({ ok: true, push: result });
   } catch (error) {
-    console.error('❌ Webhook new-batch error:', error);
+    console.error('[webhook] error:', error);
+    return res.status(500).json({ error: error.message });
   }
 });
 
