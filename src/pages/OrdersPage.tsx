@@ -312,6 +312,16 @@ export const OrderGroupCard: React.FC<{
     }
   });
 
+  // Sincronizar con localStorage cuando cambia el order (OrderGroupCard)
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('newBatches') || '[]');
+      setNewBatches(stored);
+    } catch {
+      setNewBatches([]);
+    }
+  }, [order.id]);
+
   // Limpiar batch de "nuevo" cuando se interactúa con él
   const handleBatchInteraction = (batchId: string) => {
     setNewBatches(prev => {
@@ -655,6 +665,16 @@ const OrderDetailContent: React.FC<{
       return [];
     }
   });
+
+  // Sincronizar con localStorage cuando cambia el order (OrderDetailContent)
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('newBatches') || '[]');
+      setNewBatches(stored);
+    } catch {
+      setNewBatches([]);
+    }
+  }, [order.id]);
 
   // Limpiar batch de "nuevo" cuando se interactúa con él
   const handleBatchInteraction = (batchId: string) => {
