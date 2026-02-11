@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.21] - 2026-02-11
+
+### Agregado
+- 
+
+### Cambiado
+- Diagnóstico Push: timeout de 5s para evitar carga infinita cuando Service Worker no está listo
+
+### Corregido
+- Panel de diagnóstico Push ya no se queda cargando indefinidamente
+
+
 ## [1.0.19] - 2026-02-10
 
 ### Agregado

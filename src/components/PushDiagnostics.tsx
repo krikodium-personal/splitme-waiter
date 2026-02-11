@@ -19,6 +19,7 @@ export const PushDiagnostics: React.FC<{ waiterId?: string }> = ({ waiterId }) =
     setLoading(true);
     const results: DiagnosticResult[] = [];
 
+    try {
     // 1. Verificar soporte de Service Worker
     if ('serviceWorker' in navigator) {
       results.push({
@@ -116,9 +117,25 @@ export const PushDiagnostics: React.FC<{ waiterId?: string }> = ({ waiterId }) =
       });
     }
 
-    // 6. Verificar Service Worker registrado
+    // 6. Verificar Service Worker registrado (con timeout para evitar carga infinita)
+    const swReadyTimeout = (ms: number): Promise<ServiceWorkerRegistration | null> =>
+      new Promise((resolve) => {
+        if (!('serviceWorker' in navigator)) {
+          resolve(null);
+          return;
+        }
+        const t = setTimeout(() => resolve(null), ms);
+        navigator.serviceWorker.ready.then((r) => {
+          clearTimeout(t);
+          resolve(r);
+        }).catch(() => {
+          clearTimeout(t);
+          resolve(null);
+        });
+      });
+
     try {
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await swReadyTimeout(5000);
       if (registration) {
         results.push({
           name: 'Service Worker Registrado',
@@ -126,20 +143,27 @@ export const PushDiagnostics: React.FC<{ waiterId?: string }> = ({ waiterId }) =
           message: 'Sí',
           details: `Estado: ${registration.active?.state || 'unknown'}`
         });
+      } else {
+        results.push({
+          name: 'Service Worker Registrado',
+          status: 'warning',
+          message: 'No listo',
+          details: 'El Service Worker no está activo (puede tardar o no estar registrado). Recarga la app.'
+        });
       }
     } catch (error) {
       results.push({
         name: 'Service Worker Registrado',
         status: 'error',
         message: 'Error',
-        details: `No se pudo obtener el service worker: ${error}`
+        details: `No se pudo obtener: ${error}`
       });
     }
 
     // 7. Verificar suscripción push existente
     try {
-      const registration = await navigator.serviceWorker.ready;
-      const existingSubscription = await registration.pushManager.getSubscription();
+      const registration = await swReadyTimeout(5000);
+      const existingSubscription = registration ? await registration.pushManager.getSubscription() : null;
       if (existingSubscription) {
         setSubscription(existingSubscription);
         results.push({
@@ -209,7 +233,18 @@ export const PushDiagnostics: React.FC<{ waiterId?: string }> = ({ waiterId }) =
     }
 
     setDiagnostics(results);
-    setLoading(false);
+    } catch (err) {
+      console.error('[PushDiagnostics] Error:', err);
+      results.push({
+        name: 'Error General',
+        status: 'error',
+        message: 'Error inesperado',
+        details: String(err)
+      });
+      setDiagnostics(results);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
