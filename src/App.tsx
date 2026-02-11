@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Bell, LogOut, Loader2, BellRing, X } from 'lucide-react';
+import { Bell, LogOut, Loader2, BellRing, X, Settings } from 'lucide-react';
 import { supabase } from './supabase';
 import LoginPage from './pages/LoginPage';
 import OrdersPage from './pages/OrdersPage';
@@ -8,6 +8,7 @@ import { isPushSupported } from './pushNotifications';
 import type { Waiter } from './types';
 import { APP_VERSION } from './version';
 import { PushDiagnostics } from './components/PushDiagnostics';
+import { WaiterNotificationsPanel } from './components/WaiterNotificationsPanel';
 
 interface Restaurant {
   id: string;
@@ -33,6 +34,7 @@ const App: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
   const [showPushDiagnostics, setShowPushDiagnostics] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [blinkingTableIds, setBlinkingTableIds] = useState<Set<string>>(new Set());
   const [tableMenuData, setTableMenuData] = useState<{
     allTablesWithStatus: Array<{
@@ -44,7 +46,7 @@ const App: React.FC = () => {
       hasOrder: boolean;
     }>;
     selectedOrderId: string | null;
-    onTableClick: (orderId: string | null) => void;
+    onTableClick: (orderId: string | null, tableId?: string) => void;
     tableStripRef: React.RefObject<HTMLDivElement | null>;
     isDraggingStrip: boolean;
     handlers: {
@@ -57,17 +59,32 @@ const App: React.FC = () => {
   } | null>(null);
   const navigate = useNavigate();
 
-  // Cerrar panel de notificaciones al hacer click fuera
+  // Cerrar paneles al hacer click fuera
+  // Solicitar permisos de notificaciones del navegador al iniciar la app
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().then(permission => {
+        console.log('[App] Permiso de notificaciones:', permission);
+      });
+    }
+  }, []);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (showNotificationsPanel && !target.closest('[data-notifications-panel]') && !target.closest('[data-notifications-button]')) {
+      if (showNotificationsPanel && !target.closest('[data-batch-notifications-panel]') && !target.closest('[data-batch-notifications-button]')) {
         setShowNotificationsPanel(false);
+      }
+      if (showSettings && !target.closest('[data-settings-panel]') && !target.closest('button[title="Ajustes"]')) {
+        setShowSettings(false);
+      }
+      if (showPushDiagnostics && !target.closest('[data-push-diagnostics]')) {
+        setShowPushDiagnostics(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showNotificationsPanel]);
+  }, [showNotificationsPanel, showSettings, showPushDiagnostics]);
 
 
   const handleLoginSuccess = (w: Waiter, r: Restaurant) => {
@@ -80,6 +97,7 @@ const App: React.FC = () => {
     setWaiter(null);
     setRestaurant(null);
     setWaiterTableIds([]);
+    setTableMenuData(null);
     navigate('/login');
   };
 
@@ -288,10 +306,18 @@ const App: React.FC = () => {
               </button>
             )}
             <button
+              onClick={() => setShowSettings(!showSettings)}
+              className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-slate-600 hover:bg-gray-200 transition-colors"
+              title="Ajustes"
+            >
+              <Settings size={18} />
+            </button>
+            <WaiterNotificationsPanel waiterId={waiter?.id ?? null} />
+            <button
               onClick={() => setShowNotificationsPanel(!showNotificationsPanel)}
-              data-notifications-button
+              data-batch-notifications-button
               className="relative w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-slate-600 hover:bg-gray-200 transition-colors"
-              title="Notificaciones"
+              title="Envíos recibidos"
             >
               <Bell size={20} />
               {notifications.filter(n => !n.read).length > 0 && (
@@ -310,11 +336,49 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        {/* Panel de notificaciones */}
-        {showNotificationsPanel && (
-          <div data-notifications-panel className="absolute top-full right-6 mt-2 w-[90vw] max-w-md bg-white rounded-2xl shadow-xl border border-gray-200 z-50 max-h-[60vh] overflow-hidden flex flex-col">
+        {/* Panel de ajustes */}
+        {showSettings && (
+          <div data-settings-panel className="absolute top-full right-6 mt-2 w-[90vw] max-w-md bg-white rounded-2xl shadow-xl border border-gray-200 z-50">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Notificaciones</h3>
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Ajustes</h3>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+              >
+                <X size={18} className="text-slate-600" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <p className="text-xs font-black text-slate-900 mb-2">Información del mesero</p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Nombre:</span>
+                    <span className="font-black text-slate-900">{waiter.full_name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Apodo:</span>
+                    <span className="font-black text-slate-900">{waiter.nickname || '-'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Restaurante:</span>
+                    <span className="font-black text-slate-900">{restaurant.name}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="border-t border-gray-100 pt-4">
+                <p className="text-xs font-black text-slate-900 mb-2">Versión</p>
+                <p className="text-sm text-slate-600">v {APP_VERSION}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Panel de notificaciones de envíos/batches */}
+        {showNotificationsPanel && (
+          <div data-batch-notifications-panel className="absolute top-full right-6 mt-2 w-[90vw] max-w-md bg-white rounded-2xl shadow-xl border border-gray-200 z-50 max-h-[60vh] overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Envíos recibidos</h3>
               <button
                 onClick={() => {
                   // Marcar todas como leídas
@@ -393,57 +457,71 @@ const App: React.FC = () => {
                 onPointerLeave={tableMenuData.handlers.onPointerLeave}
                 onPointerCancel={tableMenuData.handlers.onPointerCancel}
               >
-                {tableMenuData.allTablesWithStatus.map((tableInfo) => {
+                {tableMenuData.allTablesWithStatus.map((tableInfo, index) => {
                   const isSelected = tableInfo.orderId === tableMenuData.selectedOrderId;
-                  const canSelect = tableInfo.hasOrder;
-                  const isBlinking = blinkingTableIds.has(tableInfo.tableId);
-                  // Debug: verificar datos
-                  console.log('[App] Renderizando mesa:', { 
-                    tableId: tableInfo.tableId,
-                    tableNumber: tableInfo.tableNumber, 
-                    status: tableInfo.status, 
-                    hasOrder: tableInfo.hasOrder,
-                    statusColorClass: tableInfo.statusColorClass
-                  });
+                  const isOcupada = (tableInfo.status && String(tableInfo.status).trim().toUpperCase()) === 'OCUPADA';
+                  const canSelect = tableInfo.hasOrder || isOcupada;
+                  const num = tableInfo.tableNumber ?? (tableInfo as { table_number?: number }).table_number;
+                  const displayNumber = num != null ? String(num) : String(index + 1);
+                  const displayStatus = (tableInfo.status && String(tableInfo.status).trim()) || 'LIBRE';
+                  const isLibre = (tableInfo.status && String(tableInfo.status).trim().toLowerCase()) === 'libre';
+                  const blue = '#2563eb';
+                  // Paleta: combinación CLARA = mesa no seleccionada (fondo blanco, borde y texto azul)
+                  //         combinación AZUL = mesa seleccionada (fondo azul, texto blanco)
+                  const btnBg = isSelected ? blue : '#fff';
+                  const btnBorder = blue;
+                  const numColor = isSelected ? '#fff' : blue;
+                  const badgeBg = isSelected ? 'rgba(255,255,255,0.3)' : isLibre ? '#dcfce7' : '#fee2e2';
+                  const badgeColor = isSelected ? '#fff' : isLibre ? '#166534' : '#b91c1c';
+                  const badgeBorder = isSelected ? 'rgba(255,255,255,0.5)' : isLibre ? '#86efac' : '#fecaca';
                   return (
                     <button
                       key={tableInfo.tableId}
                       type="button"
-                      onClick={() => {
-                        if (canSelect) {
-                          tableMenuData.onTableClick(tableInfo.orderId!);
-                          // Detener el titilar cuando se hace click
-                          setBlinkingTableIds(prev => {
-                            const next = new Set(prev);
-                            next.delete(tableInfo.tableId);
-                            return next;
-                          });
-                        }
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!canSelect) return;
+                        tableMenuData.onTableClick(tableInfo.orderId ?? null, tableInfo.tableId);
+                        setBlinkingTableIds(prev => {
+                          const next = new Set(prev);
+                          next.delete(tableInfo.tableId);
+                          return next;
+                        });
                       }}
                       disabled={!canSelect}
-                      className={`shrink-0 flex flex-col items-center justify-center gap-1.5 px-5 py-3.5 rounded-2xl border-2 transition-all duration-200 min-w-[110px] touch-manipulation ${
-                        !canSelect
-                          ? 'bg-white border-emerald-200 text-slate-700 cursor-default hover:border-emerald-300'
-                          : isSelected
-                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200'
-                          : 'bg-white border-gray-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/50 active:bg-indigo-50'
-                      } ${isBlinking ? 'animate-pulse ring-4 ring-red-400 ring-opacity-75' : ''}`}
+                      style={{
+                        flexShrink: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        padding: '14px 20px',
+                        minWidth: 110,
+                        borderRadius: 16,
+                        border: `2px solid ${btnBorder}`,
+                        background: btnBg,
+                        cursor: canSelect ? 'pointer' : 'default',
+                        color: numColor,
+                      }}
+                      className={blinkingTableIds.has(tableInfo.tableId) ? 'animate-pulse' : ''}
                     >
-                      {/* Número de mesa - siempre visible */}
-                      <span className={`text-2xl font-black tracking-tighter ${isSelected ? 'text-white' : canSelect ? 'text-indigo-600' : 'text-slate-700'}`}>
-                        {tableInfo.tableNumber ?? '?'}
-                      </span>
-                      {/* Texto "Mesa" */}
-                      <span className={`text-[9px] font-black uppercase tracking-widest ${isSelected ? 'opacity-90' : 'opacity-80'}`}>
-                        Mesa
-                      </span>
-                      {/* Status badge - siempre visible */}
-                      <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase border ${
-                        isSelected 
-                          ? 'bg-white/20 border-white/30 text-white' 
-                          : (tableInfo.statusColorClass || 'bg-emerald-100 text-emerald-800 border-emerald-200')
-                      }`}>
-                        {tableInfo.status || 'LIBRE'}
+                      <span style={{ fontSize: 24, fontWeight: 800, lineHeight: 1 }}>{displayNumber}</span>
+                      <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', opacity: isSelected ? 0.95 : 0.85 }}>MESA</span>
+                      <span
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: 8,
+                          fontSize: 10,
+                          fontWeight: 800,
+                          letterSpacing: '0.05em',
+                          background: badgeBg,
+                          color: badgeColor,
+                          border: `1px solid ${badgeBorder}`,
+                        }}
+                      >
+                        {displayStatus}
                       </span>
                     </button>
                   );
@@ -527,7 +605,7 @@ const App: React.FC = () => {
         
         {/* Panel de diagnóstico de push notifications */}
         {showPushDiagnostics && (
-          <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowPushDiagnostics(false)}>
+          <div data-push-diagnostics className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowPushDiagnostics(false)}>
             <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
                 <h2 className="text-lg font-black text-slate-900">Diagnóstico de Push Notifications</h2>

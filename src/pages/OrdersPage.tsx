@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   Clock, CheckCircle2, Utensils, Hash, 
   MessageSquare, Play, Check, 
@@ -22,7 +22,7 @@ interface OrdersPageProps {
       hasOrder: boolean;
     }>;
     selectedOrderId: string | null;
-    onTableClick: (orderId: string | null) => void;
+    onTableClick: (orderId: string | null, tableId?: string) => void;
     tableStripRef: React.RefObject<HTMLDivElement | null>;
     isDraggingStrip: boolean;
     handlers: {
@@ -444,7 +444,7 @@ export const OrderGroupCard: React.FC<{
                     e.stopPropagation();
                     await onCloseMesa(order);
                   }}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-sm active:scale-95"
+                  className="px-4 py-2 bg-black text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-800 transition-all shadow-sm active:scale-95"
                 >
                   Cerrar mesa
                 </button>
@@ -704,12 +704,12 @@ const OrderDetailContent: React.FC<{
           </div>
           <div className="flex items-center gap-3">
             <span className="px-4 py-1.5 bg-white/20 backdrop-blur-sm text-white rounded-full text-[9px] font-black uppercase tracking-widest border border-white/30">
-              {batches.length} {batches.length === 1 ? 'Envío' : 'Envíos'}
+              {batches.length > 0 ? `${batches.length} ${batches.length === 1 ? 'Envío' : 'Envíos'}` : '0 Envíos'}
             </span>
             {status.isMesaListaParaCerrar && (
               <button
                 onClick={() => onCloseMesa(order)}
-                className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-sm active:scale-95"
+                className="px-4 py-2 bg-black text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-800 transition-all shadow-sm active:scale-95"
               >
                 Cerrar mesa
               </button>
@@ -746,6 +746,11 @@ const OrderDetailContent: React.FC<{
               />
             );
           })}
+        </div>
+      ) : allBatches.length > 0 ? (
+        <div className="flex flex-col items-center justify-center py-10 rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/30 text-indigo-700">
+          <Utensils size={28} className="mb-2 opacity-80" />
+          <p className="text-sm font-bold text-center px-4">Los comensales están seleccionando sus platos y en breve recibirás el pedido</p>
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-10 rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 text-slate-400">
@@ -830,7 +835,7 @@ const OrderDetailContent: React.FC<{
 
 const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onNewBatch, onTableMenuData }) => {
   const [orders, setOrders] = useState<any[]>([]);
-  const [allAssignedTables, setAllAssignedTables] = useState<Array<{ id: string; table_number: number }>>([]);
+  const [allAssignedTables, setAllAssignedTables] = useState<Array<{ id: string; table_number: number; status: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [toggleLoading, setToggleLoading] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -847,36 +852,62 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
   const tableStripRef = useRef<HTMLDivElement>(null);
   const stripDragStart = useRef({ x: 0, scrollLeft: 0, moved: false });
   const waiterTableIdsRef = useRef(waiterTableIds);
+  const realtimeMountedRef = useRef(true);
+  const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
     waiterTableIdsRef.current = waiterTableIds;
   }, [waiterTableIds]);
 
-  // Obtener todas las mesas asignadas con sus números
-  useEffect(() => {
+  const fetchAssignedTables = useCallback(() => {
     if (waiterTableIds.length === 0) {
       setAllAssignedTables([]);
       return;
     }
+    const mapTable = (t: { id: string; table_number?: number; tableNumber?: number; status?: string }, defaultStatus = 'Libre') => ({
+      id: t.id,
+      table_number: t.table_number ?? t.tableNumber ?? 0,
+      status: (t.status != null && String(t.status).trim()) ? String(t.status).trim() : defaultStatus
+    });
     supabase
       .from('tables')
-      .select('id, table_number')
+      .select('id, table_number, status')
       .in('id', waiterTableIds)
       .order('table_number', { ascending: true })
       .then(({ data, error }) => {
         if (error) {
-          console.error('Error al cargar mesas asignadas:', error);
-          setAllAssignedTables([]);
+          // Si falla (ej. columna status no existe), intentar solo id y table_number
+          supabase
+            .from('tables')
+            .select('id, table_number')
+            .in('id', waiterTableIds)
+            .order('table_number', { ascending: true })
+            .then(({ data: dataFallback, error: errFallback }) => {
+              if (errFallback) {
+                console.error('Error al cargar mesas asignadas:', errFallback);
+                setAllAssignedTables([]);
+              } else {
+                setAllAssignedTables((dataFallback || []).map((t: { id: string; table_number?: number; tableNumber?: number }) => mapTable(t, 'Libre')));
+              }
+            });
         } else {
-          setAllAssignedTables((data || []).map((t: any) => ({ id: t.id, table_number: t.table_number })));
+          setAllAssignedTables((data || []).map((t) => mapTable(t)));
         }
       });
   }, [waiterTableIds]);
 
   useEffect(() => {
+    fetchAssignedTables();
+  }, [fetchAssignedTables]);
+
+  useEffect(() => {
+    realtimeMountedRef.current = true;
     bellAudioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
 
     fetchActiveOrders();
+
+    // En Strict Mode el efecto se desmonta y remonta: reutilizar el mismo canal para no disparar "WebSocket closed"
+    if (realtimeChannelRef.current) return;
 
     const channel = supabase
       .channel('admin-kitchen-realtime')
@@ -979,8 +1010,19 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
       })
       .subscribe();
 
+    realtimeChannelRef.current = channel;
+
     return () => {
-      supabase.removeChannel(channel);
+      realtimeMountedRef.current = false;
+      // Solo eliminar el canal si tras un momento el efecto no remontó (Strict Mode remonta al instante)
+      const delay = 300;
+      const t = setTimeout(() => {
+        if (!realtimeMountedRef.current && realtimeChannelRef.current) {
+          supabase.removeChannel(realtimeChannelRef.current);
+          realtimeChannelRef.current = null;
+        }
+      }, delay);
+      return () => clearTimeout(t);
     };
   }, [restaurantId]);
 
@@ -1033,13 +1075,19 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
     setIsDraggingStrip(false);
   };
 
-  const handleTableChipClick = (orderId: string | null) => {
-    if (!orderId) return;
+  const handleTableChipClick = (orderId: string | null, tableId?: string) => {
     if (stripDragStart.current.moved) {
       stripDragStart.current.moved = false;
       return;
     }
-    setSelectedOrderId(orderId);
+    if (orderId) {
+      setSelectedOrderId(orderId);
+      return;
+    }
+    if (tableId) {
+      const order = orders.find(o => o.table_id != null && String(o.table_id) === String(tableId));
+      if (order) setSelectedOrderId(order.id);
+    }
   };
 
   const fetchActiveOrders = async () => {
@@ -1214,27 +1262,14 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
         };
       });
 
-      // Filtrar órdenes: excluir aquellas que solo tienen batches con status 'CREADO'
-      // También excluir órdenes cerradas cuando la mesa tiene status 'Libre'
+      // Incluir todas las órdenes de las mesas del mesero (incluso sin batches) para que los botones sean clicables
+      // Excluir solo órdenes cerradas cuando la mesa tiene status 'Libre'
       const filteredOrders = processedOrders.filter(order => {
-          const batches = order.order_batches || [];
-          // Si no tiene batches, no mostrar
-          if (batches.length === 0) {
-            return false;
-          }
-          
-          // Si la orden está cerrada, verificar el status de la mesa
           if (order.status === 'CERRADO') {
             const tableInfo = tablesData.find(t => t.id === order.table_id);
-            // Si la mesa tiene status 'Libre', no mostrar la orden
-            if (tableInfo?.status === 'Libre') {
-              return false;
-            }
+            if (tableInfo?.status === 'Libre') return false;
           }
-          
-          // Si tiene batches, verificar si al menos uno NO es 'CREADO'
-          const hasNonCreatedBatch = batches.some((batch: any) => batch.status !== 'CREADO');
-          return hasNonCreatedBatch;
+          return true;
         });
 
       // Ordenar por actividad reciente DESC
@@ -1247,6 +1282,13 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
         }
         return filteredOrders;
       });
+
+      // Mesas con orden activa (o con batches ENVIADO, etc.) → marcar como OCUPADA en tabla "tables"
+      const tableIdsOccupied = [...new Set(filteredOrders.map((o: any) => o.table_id).filter(Boolean))];
+      if (tableIdsOccupied.length > 0) {
+        await supabase.from('tables').update({ status: 'OCUPADA' }).in('id', tableIdsOccupied);
+        fetchAssignedTables();
+      }
     } catch (err: any) {
       console.error("Fetch Orders Error:", err);
       setErrorMsg(err.message || 'Error de conexión con cocina');
@@ -1437,9 +1479,8 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
         return;
       }
 
-      console.log('✅ Mesa liberada correctamente');
-      
-      // Refrescar las órdenes para que se actualice el estado
+      // Actualizar listado de mesas para que el menú muestre el nuevo status
+      fetchAssignedTables();
       await fetchActiveOrders();
     } catch (err: any) {
       console.error("Error al liberar la mesa:", err);
@@ -1447,67 +1488,29 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
     }
   };
 
-  // Crear array combinado de todas las mesas asignadas (con y sin órdenes)
-  // IMPORTANTE: Este hook debe estar ANTES del return condicional para cumplir las reglas de Hooks
+  // Mapear status de la tabla "tables" a etiqueta para el botón (LIBRE / OCUPADA) y color
+  const getTableStatusDisplay = (tableStatus: string): { label: string; colorClass: string } => {
+    const normalized = (tableStatus || '').trim().toLowerCase();
+    if (normalized === 'libre') return { label: 'LIBRE', colorClass: 'bg-emerald-100 text-emerald-800 border-emerald-200' };
+    if (normalized === 'ocupada' || normalized === 'abierta') return { label: 'OCUPADA', colorClass: 'bg-red-100 text-red-800 border-red-200' };
+    const label = (tableStatus || 'Libre').trim().toUpperCase();
+    return { label, colorClass: 'bg-slate-100 text-slate-800 border-slate-200' };
+  };
+
+  // Crear array combinado: número y status vienen de la tabla "tables"
   const allTablesWithStatus = useMemo(() => {
-    console.log('[OrdersPage] Construyendo allTablesWithStatus:', { 
-      allAssignedTablesCount: allAssignedTables.length, 
-      ordersCount: orders.length,
-      allAssignedTables: allAssignedTables 
+    return allAssignedTables.map(table => {
+      const orderForTable = orders.find(o => o.table_id != null && String(o.table_id) === String(table.id));
+      const { label: statusLabel, colorClass: statusColorClass } = getTableStatusDisplay(table.status);
+      return {
+        tableId: table.id,
+        tableNumber: table.table_number ?? 0,
+        orderId: orderForTable?.id ?? null,
+        status: statusLabel,
+        statusColorClass,
+        hasOrder: !!orderForTable
+      };
     });
-    
-    const result = allAssignedTables.map(table => {
-      const orderForTable = orders.find(o => o.table_id === table.id);
-      if (orderForTable) {
-        const status = getOrderTableStatus(orderForTable);
-        // Si la orden está cerrada, mostrar como LIBRE (verde)
-        if (orderForTable.status === 'CERRADO') {
-          return {
-            tableId: table.id,
-            tableNumber: table.table_number,
-            orderId: orderForTable.id,
-            status: 'LIBRE',
-            statusColorClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-            hasOrder: true
-          };
-        }
-        // Si la mesa está abierta, mostrar ABIERTA (rojo)
-        if (status.label === 'Mesa abierta') {
-          return {
-            tableId: table.id,
-            tableNumber: table.table_number,
-            orderId: orderForTable.id,
-            status: 'ABIERTA',
-            statusColorClass: 'bg-red-100 text-red-800 border-red-200',
-            hasOrder: true
-          };
-        }
-        // Otros estados (pagada, lista para cerrar, etc.)
-        return {
-          tableId: table.id,
-          tableNumber: table.table_number,
-          orderId: orderForTable.id,
-          status: status.label,
-          statusColorClass: status.colorClass,
-          hasOrder: true
-        };
-      } else {
-        // Mesa sin orden = LIBRE (verde)
-        const mesaInfo = {
-          tableId: table.id,
-          tableNumber: table.table_number,
-          orderId: null,
-          status: 'LIBRE',
-          statusColorClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-          hasOrder: false
-        };
-        console.log('[OrdersPage] Mesa sin orden:', mesaInfo);
-        return mesaInfo;
-      }
-    });
-    
-    console.log('[OrdersPage] Resultado allTablesWithStatus:', result);
-    return result;
   }, [allAssignedTables, orders]);
 
   // Ejecutar navegación pendiente cuando las órdenes estén cargadas
@@ -1548,29 +1551,31 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
     }
   }, [loading, orders]);
 
-  // Exponer datos del menú a App.tsx
-  // IMPORTANTE: Este hook también debe estar ANTES del return condicional
+  // Exponer datos del menú a App.tsx solo cuando hay mesas (evita que el menú parpadee al cargar)
   useEffect(() => {
-    if (onTableMenuData && !loading) {
-      // Debug: verificar que los datos estén correctos
-      console.log('[OrdersPage] Enviando allTablesWithStatus:', allTablesWithStatus);
-      onTableMenuData({
-        allTablesWithStatus,
-        selectedOrderId: effectiveSelectedId,
-        onTableClick: handleTableChipClick,
-        tableStripRef,
-        isDraggingStrip,
-        handlers: {
-          onPointerDown: handleTableStripPointerDown,
-          onPointerMove: handleTableStripPointerMove,
-          onPointerUp: handleTableStripPointerUp,
-          onPointerLeave: handleTableStripPointerLeave,
-          onPointerCancel: handleTableStripPointerUp,
-        },
-      });
-    }
+    if (!onTableMenuData || allTablesWithStatus.length === 0) return;
+    const normalized = allTablesWithStatus.map((t, i) => ({
+      ...t,
+      tableNumber: t.tableNumber ?? (t as { table_number?: number }).table_number ?? i + 1,
+      status: (t.status && String(t.status).trim()) || 'LIBRE',
+      statusColorClass: t.statusColorClass || 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    }));
+    onTableMenuData({
+      allTablesWithStatus: normalized,
+      selectedOrderId: effectiveSelectedId,
+      onTableClick: handleTableChipClick,
+      tableStripRef,
+      isDraggingStrip,
+      handlers: {
+        onPointerDown: handleTableStripPointerDown,
+        onPointerMove: handleTableStripPointerMove,
+        onPointerUp: handleTableStripPointerUp,
+        onPointerLeave: handleTableStripPointerLeave,
+        onPointerCancel: handleTableStripPointerUp,
+      },
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allTablesWithStatus, effectiveSelectedId, isDraggingStrip, loading]);
+  }, [allTablesWithStatus, effectiveSelectedId, isDraggingStrip]);
 
   if (loading) {
     return (
@@ -1635,10 +1640,19 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
           <p className="text-sm font-medium">Selecciona una mesa arriba</p>
         </div>
       ) : allAssignedTables.length > 0 ? (
-        <div className="py-20 text-center text-slate-400">
-          <p className="text-sm font-medium">Todas tus mesas están libres</p>
-          <p className="text-xs text-slate-400 mt-2">Selecciona una mesa arriba cuando haya pedidos</p>
-        </div>
+        (() => {
+          const allTablesFree = allTablesWithStatus.every(t => String(t.status || '').trim().toUpperCase() === 'LIBRE');
+          return (
+            <div className="py-20 text-center text-slate-400">
+              <p className="text-sm font-medium">
+                {allTablesFree ? 'Todas tus mesas están libres' : 'Selecciona una mesa arriba para ver el pedido'}
+              </p>
+              <p className="text-xs text-slate-400 mt-2">
+                {allTablesFree ? 'Selecciona una mesa arriba cuando haya pedidos' : 'Tienes mesas ocupadas'}
+              </p>
+            </div>
+          );
+        })()
       ) : (
         <div className="py-40 flex flex-col items-center justify-center bg-white rounded-[4rem] border border-dashed border-gray-200 text-center">
            <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center text-gray-200 mb-6">
