@@ -1016,13 +1016,12 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
       realtimeMountedRef.current = false;
       // Solo eliminar el canal si tras un momento el efecto no remontó (Strict Mode remonta al instante)
       const delay = 300;
-      const t = setTimeout(() => {
+      setTimeout(() => {
         if (!realtimeMountedRef.current && realtimeChannelRef.current) {
           supabase.removeChannel(realtimeChannelRef.current);
           realtimeChannelRef.current = null;
         }
       }, delay);
-      return () => clearTimeout(t);
     };
   }, [restaurantId]);
 
