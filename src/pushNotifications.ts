@@ -40,8 +40,25 @@ export async function registerPushSubscription(waiterId?: string): Promise<PushS
     }
   }
 
+  // Timeout para evitar que se quede colgado si el Service Worker no está listo
+  const swReadyWithTimeout = (ms: number): Promise<ServiceWorkerRegistration> =>
+    new Promise((resolve, reject) => {
+      const t = setTimeout(() => {
+        reject(new Error('El Service Worker no está listo. Recarga la app e intenta de nuevo. En iOS, asegúrate de que la app esté instalada desde la pantalla de inicio.'));
+      }, ms);
+      navigator.serviceWorker.ready
+        .then((r) => {
+          clearTimeout(t);
+          resolve(r);
+        })
+        .catch((err) => {
+          clearTimeout(t);
+          reject(err);
+        });
+    });
+
   try {
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await swReadyWithTimeout(10000);
     const subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,

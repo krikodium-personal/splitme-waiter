@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.22] - 2026-02-11
+
+### Agregado
+- VitePWA configurado: Service Worker ahora se registra correctamente
+
+### Cambiado
+- Registro Push: timeout 10s para evitar bloqueo si SW no está listo
+
+### Corregido
+- Botón "Registrar Push" ya no se queda en "REGISTRANDO..." indefinidamente
+
+
 ## [1.0.21] - 2026-02-11
 
 ### Agregado
