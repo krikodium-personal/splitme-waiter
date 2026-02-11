@@ -9,28 +9,41 @@ clientsClaim();
 precacheAndRoute(self.__WB_MANIFEST);
 
 self.addEventListener('push', (event: PushEvent) => {
-  const data = event.data?.json() as { 
-    title?: string; 
-    body?: string; 
-    url?: string;
-    batchId?: string;
-    orderId?: string;
-    tableNumber?: number;
-  } | undefined;
-  const title = data?.title ?? 'Splitme Meseros';
-  const options: NotificationOptions = {
-    body: data?.body ?? '',
-    icon: '/icons/icon-192.png',
-    badge: '/icons/icon-192.png',
-    data: {
-      url: data?.url || '/',
-      batchId: data?.batchId,
-      orderId: data?.orderId,
-      tableNumber: data?.tableNumber,
-    },
-    tag: 'splitme-waiter',
+  const showNotif = async () => {
+    try {
+      let data: { title?: string; body?: string; url?: string; batchId?: string; orderId?: string; tableNumber?: number } | undefined;
+      try {
+        data = event.data ? await event.data.json() : undefined;
+      } catch {
+        data = undefined;
+      }
+      const title = data?.title ?? 'Splitme Meseros';
+      const body = data?.body ?? '';
+      const options: NotificationOptions = {
+        body,
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
+        tag: data?.batchId ? `batch-${data.batchId}` : data?.orderId ? `order-${data.orderId}` : 'splitme-waiter',
+        requireInteraction: false,
+        silent: false,
+        data: {
+          url: data?.url || '/',
+          batchId: data?.batchId,
+          orderId: data?.orderId,
+          tableNumber: data?.tableNumber,
+        },
+      };
+      await self.registration.showNotification(title, options);
+    } catch (err) {
+      console.error('[SW] Error en push:', err);
+      await self.registration.showNotification('Splitme Meseros', {
+        body: 'Tienes una nueva notificación',
+        icon: '/icons/icon-192.png',
+        tag: 'splitme-fallback',
+      });
+    }
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(showNotif());
 });
 
 self.addEventListener('notificationclick', (event: NotificationEvent) => {

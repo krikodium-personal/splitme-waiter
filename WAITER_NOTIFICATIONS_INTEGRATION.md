@@ -36,6 +36,16 @@ waiter_notifications:
 
 El componente `WaiterNotificationsPanel` se renderiza en el header pasando el `waiterId` del mesero autenticado. Las notificaciones del navegador se solicitan automáticamente al cargar la app.
 
+## Push en segundo plano
+
+Para recibir notificaciones de solicitudes **cuando la app está en segundo plano**, configura el webhook en Supabase:
+
+1. **Database** → **Webhooks** → Nuevo webhook
+2. **Table**: `waiter_notifications` | **Events**: INSERT
+3. **URL**: `https://splitme-waiter-push.vercel.app/api/webhook/waiter-notification`
+
+Ver `push-service/SUPABASE-WEBHOOK-CONFIG.md` para más detalles.
+
 ## Notas importantes
 
 1. **Realtime debe estar habilitado** en Supabase para la tabla `waiter_notifications`

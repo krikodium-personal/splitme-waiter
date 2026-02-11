@@ -252,6 +252,48 @@ app.post('/api/webhook/batch-enviado', async (req, res) => {
   }
 });
 
+/**
+ * Webhook para solicitudes de comensales (waiter_notifications).
+ * Se dispara en INSERT cuando un comensal envía una solicitud al mesero.
+ * Configurar en Supabase: Database → Webhooks → INSERT en waiter_notifications.
+ * Así el mesero recibe push incluso con la app en segundo plano.
+ */
+app.post('/api/webhook/waiter-notification', async (req, res) => {
+  try {
+    const payload = req.body;
+    const record = payload.record || payload.new || payload;
+
+    const waiterId = record?.waiter_id;
+    const orderId = record?.order_id;
+    const tableNumber = record?.table_number;
+    const message = record?.message;
+
+    console.log('[webhook] waiter-notification received', { waiterId, orderId, tableNumber, message });
+
+    if (!waiterId) {
+      console.error('[webhook] falta waiter_id', payload);
+      return res.status(400).json({ error: 'missing waiter_id' });
+    }
+
+    const url = orderId ? `/?orderId=${orderId}&tableNumber=${tableNumber}` : '/';
+
+    const result = await sendPushToWaiter(
+      waiterId,
+      `Mesa ${tableNumber || '?'}`,
+      message || 'Nueva solicitud de comensal',
+      url,
+      { orderId, tableNumber }
+    );
+
+    console.log('[webhook] resultado sendPushToWaiter:', result);
+
+    return res.status(200).json({ ok: true, push: result });
+  } catch (error) {
+    console.error('[webhook] waiter-notification error:', error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 // Iniciar servidor
 app.listen(PORT, () => {
   console.log(`🚀 Push Service corriendo en puerto ${PORT}`);

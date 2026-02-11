@@ -67,3 +67,19 @@ Para verificar que funciona:
 - El webhook solo notifica cuando el estado cambia **a** "ENVIADO", no cuando ya está en "ENVIADO".
 - Si un batch se crea directamente en estado "ENVIADO" (sin pasar por "CREADO"), también se notificará.
 - El webhook incluye `orderId`, `batchId` y `tableNumber` en los datos de la notificación push para que la app pueda navegar directamente a la mesa.
+
+---
+
+## Webhook para solicitudes de comensales (waiter_notifications)
+
+Para que el mesero reciba push cuando un comensal envía una solicitud (sal, cuenta, etc.) **incluso con la app en segundo plano**:
+
+1. Ve a **Supabase Dashboard** → **Database** → **Webhooks**
+2. Crea un nuevo webhook:
+   - **Name**: `waiter-notification-push`
+   - **Table**: `waiter_notifications`
+   - **Events**: **INSERT**
+   - **Type**: HTTP Request
+   - **Method**: POST
+   - **URL**: `https://splitme-waiter-push.vercel.app/api/webhook/waiter-notification`
+3. Guardar.
