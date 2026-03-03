@@ -206,39 +206,39 @@ const BatchCard: React.FC<{
             return (
               <div key={item.id} className="flex justify-between items-start py-2 border-b border-slate-50 last:border-0">
                 <div className="flex gap-3 flex-1">
-                  <span className="text-xs font-black text-indigo-700 bg-indigo-50 w-6 h-6 rounded-lg flex items-center justify-center border border-indigo-100">
+                  <span className="text-sm font-black text-indigo-700 bg-indigo-50 w-7 h-7 rounded-lg flex items-center justify-center border border-indigo-100">
                     {item.quantity}
                   </span>
                   <div className="flex-1">
-                    <p className="text-sm font-bold text-slate-800 leading-tight">
+                    <p className="text-base font-bold text-slate-800 leading-tight">
                       {itemName}
                     </p>
                     {(extrasArr.length > 0 || removedArr.length > 0) && (
                       <div className="flex flex-wrap items-center gap-1.5 mt-1">
                         {extrasArr.map((ex: string) => (
-                          <span key={ex} className="text-[9px] font-black uppercase bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-md border border-emerald-100">
+                          <span key={ex} className="text-[10px] font-black uppercase bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-md border border-emerald-100">
                             +{ex}
                           </span>
                         ))}
                         {removedArr.map((rem: string) => (
-                          <span key={rem} className="text-[9px] font-black uppercase bg-red-50 text-red-600 px-2 py-0.5 rounded-md border border-red-100">
+                          <span key={rem} className="text-[10px] font-black uppercase bg-red-50 text-red-600 px-2 py-0.5 rounded-md border border-red-100">
                             -{rem}
                           </span>
                         ))}
                       </div>
                     )}
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] font-bold text-slate-500">
+                      <span className="text-xs font-bold text-slate-500">
                         ${Number(unitPrice).toLocaleString('es-CL')} c/u
                       </span>
                       {item.quantity > 1 && (
                         <>
-                          <span className="text-[9px] text-slate-300">×</span>
-                          <span className="text-[10px] font-bold text-slate-500">
+                          <span className="text-[10px] text-slate-300">×</span>
+                          <span className="text-xs font-bold text-slate-500">
                             {item.quantity}
                           </span>
-                          <span className="text-[9px] text-slate-300">=</span>
-                          <span className="text-[10px] font-black text-indigo-600">
+                          <span className="text-[10px] text-slate-300">=</span>
+                          <span className="text-xs font-black text-indigo-600">
                             ${Number(subtotal).toLocaleString('es-CL')}
                           </span>
                         </>
@@ -253,15 +253,15 @@ const BatchCard: React.FC<{
                 </div>
                 <div className="text-right ml-3">
                   {item.quantity === 1 ? (
-                    <span className="text-sm font-black text-indigo-600">
+                    <span className="text-base font-black text-indigo-600">
                       ${Number(unitPrice).toLocaleString('es-CL')}
                     </span>
                   ) : (
                     <div className="text-right">
-                      <span className="text-xs font-bold text-slate-400 line-through">
+                      <span className="text-sm font-bold text-slate-400 line-through">
                         ${Number(unitPrice).toLocaleString('es-CL')}
                       </span>
-                      <div className="text-sm font-black text-indigo-600">
+                      <div className="text-base font-black text-indigo-600">
                         ${Number(subtotal).toLocaleString('es-CL')}
                       </div>
                     </div>
