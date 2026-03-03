@@ -83,3 +83,24 @@ Para que el mesero reciba push cuando un comensal envía una solicitud (sal, cue
    - **Method**: POST
    - **URL**: `https://splitme-waiter-push.vercel.app/api/webhook/waiter-notification`
 3. Guardar.
+
+---
+
+## Webhook para pago seleccionado por comensal (order_guests)
+
+Cuando un comensal selecciona **efectivo** o **transferencia** como método de pago, el mesero ve "Marcar Pagado" en la app. Este webhook envía una notificación push al mesero para que verifique o procese el pago.
+
+1. Ve a **Supabase Dashboard** → **Database** → **Webhooks**
+2. Crea un nuevo webhook:
+   - **Name**: `guest-payment-selected-push`
+   - **Table**: `order_guests`
+   - **Events**: **UPDATE** (y opcionalmente **INSERT** si el comensal selecciona pago al crear su perfil)
+   - **Type**: HTTP Request
+   - **Method**: POST
+   - **URL**: `https://splitme-waiter-push.vercel.app/api/webhook/guest-payment-selected`
+3. Guardar.
+
+El webhook solo envía push cuando:
+- `payment_method` es `efectivo` o `transferencia` (pago manual)
+- `paid` es `false` (aún no marcado como pagado)
+- El método de pago cambió (evita duplicados si se re-guarda el mismo valor)

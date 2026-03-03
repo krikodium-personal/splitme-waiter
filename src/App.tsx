@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Bell, LogOut, Loader2, BellRing, X, Settings } from 'lucide-react';
+import { Bell, LogOut, Loader2, BellRing, X } from 'lucide-react';
 import { supabase } from './supabase';
 import LoginPage from './pages/LoginPage';
 import OrdersPage from './pages/OrdersPage';
@@ -34,7 +34,6 @@ const App: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
   const [showPushDiagnostics, setShowPushDiagnostics] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [blinkingTableIds, setBlinkingTableIds] = useState<Set<string>>(new Set());
   const [tableMenuData, setTableMenuData] = useState<{
     allTablesWithStatus: Array<{
@@ -75,16 +74,13 @@ const App: React.FC = () => {
       if (showNotificationsPanel && !target.closest('[data-batch-notifications-panel]') && !target.closest('[data-batch-notifications-button]')) {
         setShowNotificationsPanel(false);
       }
-      if (showSettings && !target.closest('[data-settings-panel]') && !target.closest('button[title="Ajustes"]')) {
-        setShowSettings(false);
-      }
       if (showPushDiagnostics && !target.closest('[data-push-diagnostics]')) {
         setShowPushDiagnostics(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showNotificationsPanel, showSettings, showPushDiagnostics]);
+  }, [showNotificationsPanel, showPushDiagnostics]);
 
 
   const handleLoginSuccess = (w: Waiter, r: Restaurant) => {
@@ -305,13 +301,6 @@ const App: React.FC = () => {
                 Push
               </button>
             )}
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-slate-600 hover:bg-gray-200 transition-colors"
-              title="Ajustes"
-            >
-              <Settings size={18} />
-            </button>
             <WaiterNotificationsPanel waiterId={waiter?.id ?? null} />
             <button
               onClick={() => setShowNotificationsPanel(!showNotificationsPanel)}
@@ -335,44 +324,6 @@ const App: React.FC = () => {
             </button>
           </div>
         </header>
-
-        {/* Panel de ajustes */}
-        {showSettings && (
-          <div data-settings-panel className="absolute top-full right-6 mt-2 w-[90vw] max-w-md bg-white rounded-2xl shadow-xl border border-gray-200 z-50">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Ajustes</h3>
-              <button
-                onClick={() => setShowSettings(false)}
-                className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
-              >
-                <X size={18} className="text-slate-600" />
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              <div>
-                <p className="text-xs font-black text-slate-900 mb-2">Información del mesero</p>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-slate-600">Nombre:</span>
-                    <span className="font-black text-slate-900">{waiter.full_name}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-600">Apodo:</span>
-                    <span className="font-black text-slate-900">{waiter.nickname || '-'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-600">Restaurante:</span>
-                    <span className="font-black text-slate-900">{restaurant.name}</span>
-                  </div>
-                </div>
-              </div>
-              <div className="border-t border-gray-100 pt-4">
-                <p className="text-xs font-black text-slate-900 mb-2">Versión</p>
-                <p className="text-sm text-slate-600">v {APP_VERSION}</p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Panel de notificaciones de envíos/batches */}
         {showNotificationsPanel && (
@@ -468,12 +419,14 @@ const App: React.FC = () => {
                   const blue = '#2563eb';
                   // Paleta: combinación CLARA = mesa no seleccionada (fondo blanco, borde y texto azul)
                   //         combinación AZUL = mesa seleccionada (fondo azul, texto blanco)
+                  //         LIBRE (sin acción) = stroke gris. OCUPADA (con acción) = stroke azul
                   const btnBg = isSelected ? blue : '#fff';
-                  const btnBorder = blue;
+                  const btnBorder = isSelected ? blue : canSelect ? blue : '#9ca3af';
                   const numColor = isSelected ? '#fff' : blue;
                   const badgeBg = isSelected ? 'rgba(255,255,255,0.3)' : isLibre ? '#dcfce7' : '#fee2e2';
                   const badgeColor = isSelected ? '#fff' : isLibre ? '#166534' : '#b91c1c';
-                  const badgeBorder = isSelected ? 'rgba(255,255,255,0.5)' : isLibre ? '#86efac' : '#fecaca';
+                  // LIBRE = sin acción → stroke gris. OCUPADA = con acción → stroke azul
+                  const badgeBorder = isSelected ? 'rgba(255,255,255,0.5)' : isLibre ? '#9ca3af' : blue;
                   return (
                     <button
                       key={tableInfo.tableId}

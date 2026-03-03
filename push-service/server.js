@@ -294,6 +294,86 @@ app.post('/api/webhook/waiter-notification', async (req, res) => {
   }
 });
 
+/**
+ * Webhook para cuando un comensal selecciona tipo de pago (efectivo/transferencia).
+ * Se dispara en UPDATE cuando order_guests.payment_method pasa a efectivo o transferencia.
+ * El mesero ve "Marcar Pagado" y debe recibir push para verificar el pago.
+ * Configurar en Supabase: Database → Webhooks → UPDATE en order_guests.
+ */
+app.post('/api/webhook/guest-payment-selected', async (req, res) => {
+  try {
+    const payload = req.body;
+    const record = payload.record || payload.new || payload;
+    const oldRecord = payload.old_record || payload.old || {};
+
+    const orderId = record?.order_id;
+    const paymentMethod = (record?.payment_method || '').toLowerCase();
+    const isPaid = record?.paid === true;
+    const guestName = record?.name || 'Comensal';
+
+    console.log('[webhook] guest-payment-selected received', { orderId, paymentMethod, isPaid, guestName });
+
+    // Solo notificar para efectivo o transferencia (pago manual), y si aún no está pagado
+    const needsManualPayment = paymentMethod === 'efectivo' || paymentMethod === 'transferencia';
+    if (!needsManualPayment || isPaid) {
+      console.log('[webhook] ignorando: no es pago manual o ya está pagado', { paymentMethod, isPaid });
+      return res.status(200).json({ ok: true, skipped: true, reason: 'no_manual_payment_or_already_paid' });
+    }
+
+    // Evitar notificar si payment_method ya era efectivo/transferencia (evitar duplicados)
+    const oldPaymentMethod = (oldRecord?.payment_method || '').toLowerCase();
+    if (oldPaymentMethod === paymentMethod) {
+      console.log('[webhook] ignorando: payment_method no cambió', { oldPaymentMethod, paymentMethod });
+      return res.status(200).json({ ok: true, skipped: true, reason: 'payment_method_unchanged' });
+    }
+
+    if (!orderId) {
+      console.error('[webhook] falta order_id', payload);
+      return res.status(400).json({ error: 'missing order_id' });
+    }
+
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('table_id')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !order?.table_id) {
+      console.error('[webhook] error orden', orderError);
+      return res.status(400).json({ error: 'order not found', details: orderError?.message });
+    }
+
+    const { data: table, error: tableError } = await supabase
+      .from('tables')
+      .select('waiter_id, table_number')
+      .eq('id', order.table_id)
+      .single();
+
+    if (tableError || !table?.waiter_id) {
+      console.error('[webhook] error mesa/mesero', tableError);
+      return res.status(400).json({ error: 'table/waiter not found', details: tableError?.message });
+    }
+
+    const methodLabel = paymentMethod === 'efectivo' ? 'efectivo' : 'transferencia';
+    const url = `/?orderId=${orderId}&tableNumber=${table.table_number}`;
+
+    const result = await sendPushToWaiter(
+      table.waiter_id,
+      'Pago pendiente de verificación',
+      `${guestName} seleccionó pago en ${methodLabel}. Mesa ${table.table_number} - Marcar como pagado`,
+      url,
+      { orderId, tableNumber: table.table_number, guestName, paymentMethod }
+    );
+
+    console.log('[webhook] guest-payment-selected resultado:', result);
+
+    return res.status(200).json({ ok: true, push: result });
+  } catch (error) {
+    console.error('[webhook] guest-payment-selected error:', error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 // Iniciar servidor
 app.listen(PORT, () => {
   console.log(`🚀 Push Service corriendo en puerto ${PORT}`);
