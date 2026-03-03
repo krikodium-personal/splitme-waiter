@@ -71,9 +71,23 @@
 1. Configura la URL de tu backend que recibe suscripciones
 2. Agrega a variables de entorno: `VITE_PUSH_SUBSCRIPTION_URL=https://tu-backend.com/push-subscribe`
 
+### ❌ Las notificaciones solo aparecen cuando abro la app (no en segundo plano)
+**En iPhone/iOS**, verifica:
+
+1. **App instalada desde pantalla de inicio**: Debe abrirse desde el icono, NO desde Safari.
+2. **Configuración → Notificaciones → Splitme**:
+   - Activar "Permitir notificaciones"
+   - Activar "Pantalla de bloqueo", "Centro de notificaciones" y "Banners"
+3. **Modo Bajo Consumo**: Desactívalo (puede retrasar o bloquear push).
+4. **Modo Enfoque / No molestar**: Desactívalo para probar.
+5. **Re-registrar suscripción**: En el panel Push (botón "Push" en el header), toca "Registrar Push Subscription" de nuevo.
+6. **La app re-sincroniza la suscripción** automáticamente cada vez que la abres; esto ayuda con bugs de Safari en iOS.
+
+**Nota:** Safari en iOS tiene limitaciones conocidas con push en segundo plano. Si sigue sin funcionar, es una restricción del navegador.
+
 ### ❌ Las notificaciones no llegan aunque todo esté configurado
 **Posibles causas:**
-1. **No hay backend enviando notificaciones**: Las push notifications requieren que un backend envíe las notificaciones usando `web-push`. El código actual solo muestra notificaciones cuando la app está abierta.
+1. **No hay backend enviando notificaciones**: Las push notifications requieren que un backend envíe las notificaciones usando `web-push`.
 
 2. **El backend no está escuchando eventos**: El backend debe escuchar eventos (ej: nuevos batches en Supabase) y enviar push notifications.
 

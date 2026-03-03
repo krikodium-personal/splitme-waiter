@@ -179,27 +179,27 @@ app.get('/health', (req, res) => {
 
 /**
  * Webhook para Supabase Database Webhooks.
- * Se dispara en UPDATE cuando un batch cambia a estado "ENVIADO".
- * Configurar en Supabase: Database → Webhooks → UPDATE en order_batches.
- * En Vercel hay que hacer TODO el trabajo antes de responder;
- * si respondemos 202 antes, la función puede terminar y el push no se envía.
+ * Se dispara en UPDATE cuando un batch cambia a estado "ENVIADO", o en INSERT cuando se crea con status "ENVIADO".
+ * Configurar en Supabase: Database → Webhooks → UPDATE e INSERT en order_batches.
  */
 app.post('/api/webhook/batch-enviado', async (req, res) => {
   try {
     const payload = req.body;
-    // En UPDATE, Supabase envía: { type: 'UPDATE', table: 'order_batches', record: {...}, old_record: {...} }
     const record = payload.record || payload.new || payload;
     const oldRecord = payload.old_record || payload.old;
     const orderId = record?.order_id;
     const batchId = record?.id;
     const newStatus = record?.status;
     const oldStatus = oldRecord?.status;
+    const eventType = payload.type || payload.eventType || 'UPDATE';
 
-    console.log('[webhook] batch-enviado received', { batchId, orderId, newStatus, oldStatus });
+    console.log('[webhook] batch-enviado received', { eventType, batchId, orderId, newStatus, oldStatus });
 
-    // Solo notificar si el estado cambió a "ENVIADO"
-    if (newStatus !== 'ENVIADO' || oldStatus === 'ENVIADO') {
-      console.log('[webhook] ignorando: estado no es ENVIADO o ya era ENVIADO', { newStatus, oldStatus });
+    // Notificar si: (UPDATE y cambió a ENVIADO) o (INSERT y ya viene con ENVIADO)
+    const isUpdateToEnviado = eventType === 'UPDATE' && newStatus === 'ENVIADO' && oldStatus !== 'ENVIADO';
+    const isInsertWithEnviado = eventType === 'INSERT' && newStatus === 'ENVIADO';
+    if (!isUpdateToEnviado && !isInsertWithEnviado) {
+      console.log('[webhook] ignorando:', { eventType, newStatus, oldStatus });
       return res.status(200).json({ ok: true, skipped: true, reason: 'status_not_enviado' });
     }
 

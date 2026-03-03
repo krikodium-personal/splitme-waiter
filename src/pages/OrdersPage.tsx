@@ -909,6 +909,45 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
     // En Strict Mode el efecto se desmonta y remonta: reutilizar el mismo canal para no disparar "WebSocket closed"
     if (realtimeChannelRef.current) return;
 
+    const handleBatchEnviado = async (orderId: string, batchId: string) => {
+      if (bellAudioRef.current) {
+        bellAudioRef.current.currentTime = 0;
+        bellAudioRef.current.play().catch(() => {});
+      }
+      try {
+        const { data: orderData, error: orderError } = await supabase
+          .from('orders')
+          .select('table_id')
+          .eq('id', orderId)
+          .single();
+        if (!orderError && orderData?.table_id) {
+          const currentWaiterTableIds = waiterTableIdsRef.current;
+          if (!currentWaiterTableIds.includes(orderData.table_id)) {
+            setExpandedOrderId(orderId);
+            fetchActiveOrders();
+            return;
+          }
+          const { data: tableData, error: tableError } = await supabase
+            .from('tables')
+            .select('id, table_number')
+            .eq('id', orderData.table_id)
+            .single();
+          if (!tableError && tableData) {
+            onNewBatch?.({
+              tableId: tableData.id,
+              orderId,
+              batchId,
+              tableNumber: tableData.table_number
+            });
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error en handleBatchEnviado:', error);
+      }
+      setExpandedOrderId(orderId);
+      fetchActiveOrders();
+    };
+
     const channel = supabase
       .channel('admin-kitchen-realtime')
       .on('postgres_changes', { 
@@ -925,68 +964,20 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
         schema: 'public', 
         table: 'order_batches' 
       }, async (payload) => {
-        console.log('🔔 Nuevo batch recibido:', payload.new);
-        
-        if (bellAudioRef.current) {
-          bellAudioRef.current.currentTime = 0;
-          bellAudioRef.current.play().catch(() => {});
-        }
-        
-        // Obtener información de la orden y mesa para la notificación
-        const orderId = payload.new.order_id;
-        const batchId = payload.new.id;
-        
-        try {
-          // Obtener la orden para obtener el table_id
-          const { data: orderData, error: orderError } = await supabase
-            .from('orders')
-            .select('table_id')
-            .eq('id', orderId)
-            .single();
-          
-          console.log('📋 Datos de la orden:', orderData, 'Error:', orderError);
-          
-          if (!orderError && orderData?.table_id) {
-            // Verificar que la mesa pertenece al mesero
-            const currentWaiterTableIds = waiterTableIdsRef.current;
-            if (!currentWaiterTableIds.includes(orderData.table_id)) {
-              console.log('⚠️ Batch no pertenece a una mesa asignada al mesero');
-              setExpandedOrderId(orderId);
-              fetchActiveOrders();
-              return;
-            }
-            
-            // Obtener el número de mesa
-            const { data: tableData, error: tableError } = await supabase
-              .from('tables')
-              .select('id, table_number')
-              .eq('id', orderData.table_id)
-              .single();
-            
-            console.log('🪑 Datos de la mesa:', tableData, 'Error:', tableError);
-            
-            if (!tableError && tableData) {
-              console.log('✅ Creando notificación para mesa:', tableData.table_number);
-              onNewBatch?.({
-                tableId: tableData.id,
-                orderId: orderId,
-                batchId: batchId,
-                tableNumber: tableData.table_number
-              });
-            } else {
-              console.error('❌ Error al obtener datos de la mesa:', tableError);
-            }
-          } else {
-            console.error('❌ Error al obtener datos de la orden:', orderError);
-          }
-        } catch (error) {
-          console.error('❌ Error al obtener información de la mesa:', error);
-        }
-        
-        setExpandedOrderId(orderId);
-        fetchActiveOrders();
+        const batch = payload.new;
+        if (batch?.status !== 'ENVIADO') return; // Solo notificar cuando el batch está en "envío"
+        console.log('🔔 Nuevo batch ENVIADO recibido (INSERT):', batch);
+        await handleBatchEnviado(batch.order_id, batch.id);
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'order_batches' }, () => {
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'order_batches' }, async (payload) => {
+        const batch = payload.new;
+        const oldBatch = payload.old;
+        const newStatus = batch?.status;
+        const oldStatus = oldBatch?.status;
+        if (newStatus === 'ENVIADO' && oldStatus !== 'ENVIADO') {
+          console.log('🔔 Batch actualizado a ENVIADO:', batch);
+          await handleBatchEnviado(batch.order_id, batch.id);
+        }
         fetchActiveOrders();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => {

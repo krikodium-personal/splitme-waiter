@@ -14,7 +14,7 @@ El webhook ahora se dispara cuando un batch **cambia a estado "ENVIADO"** (UPDAT
 
    - **Name**: `batch-enviado-push-notification` (o el nombre que prefieras)
    - **Table**: `order_batches`
-   - **Events**: Selecciona **UPDATE** (no INSERT)
+   - **Events**: Selecciona **UPDATE** e **INSERT** (por si el batch se crea directamente con status ENVIADO)
    - **Type**: HTTP Request
    - **Method**: POST
    - **URL**: `https://splitme-waiter-push.vercel.app/api/webhook/batch-enviado`

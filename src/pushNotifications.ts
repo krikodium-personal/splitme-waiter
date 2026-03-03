@@ -98,6 +98,26 @@ export async function registerPushSubscription(waiterId?: string): Promise<PushS
   }
 }
 
+/** Re-sincroniza la suscripción existente con el backend. Útil en iOS donde Safari puede "olvidar" endpoints. */
+export async function syncPushSubscriptionToBackend(waiterId: string): Promise<void> {
+  if (!isPushSupported() || !PUSH_SUBSCRIPTION_URL || !waiterId) return;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return;
+    await fetch(PUSH_SUBSCRIPTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subscription: subscription.toJSON(),
+        waiter_id: waiterId,
+      }),
+    });
+  } catch {
+    // Silencioso: no queremos molestar al usuario
+  }
+}
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');

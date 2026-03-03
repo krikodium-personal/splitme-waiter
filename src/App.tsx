@@ -4,7 +4,7 @@ import { Bell, LogOut, Loader2, BellRing, X } from 'lucide-react';
 import { supabase } from './supabase';
 import LoginPage from './pages/LoginPage';
 import OrdersPage from './pages/OrdersPage';
-import { isPushSupported } from './pushNotifications';
+import { isPushSupported, syncPushSubscriptionToBackend } from './pushNotifications';
 import type { Waiter } from './types';
 import { APP_VERSION } from './version';
 import { PushDiagnostics } from './components/PushDiagnostics';
@@ -127,6 +127,18 @@ const App: React.FC = () => {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Re-sincronizar suscripción push al volver a la app (workaround iOS/Safari: endpoints pueden volverse inconsistentes)
+  useEffect(() => {
+    if (!waiter?.id) return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        syncPushSubscriptionToBackend(waiter.id);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [waiter?.id]);
 
   useEffect(() => {
     if (!waiter?.id) return;
