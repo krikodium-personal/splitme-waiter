@@ -1,5 +1,13 @@
 # Reglas de Cursor para Splitme Waiter
 
+## Puerto de desarrollo
+
+**Este proyecto SIEMPRE debe usar el puerto 3000** para el servidor de desarrollo local.
+
+- Configurado en `vite.config.ts` con `port: 3000` y `strictPort: true`
+- Si el puerto está ocupado, el servidor fallará (no usará otro puerto automáticamente)
+- Para liberar el puerto: `lsof -ti:3000 | xargs kill -9`
+
 ## REGLA CRÍTICA: Versionado en Deploy
 
 **CADA VEZ QUE HAGAS DEPLOY A GITHUB, DEBES INCREMENTAR LA VERSIÓN AUTOMÁTICAMENTE**

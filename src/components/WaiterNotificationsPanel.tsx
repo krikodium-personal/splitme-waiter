@@ -34,23 +34,31 @@ export const WaiterNotificationsPanel: React.FC<WaiterNotificationsPanelProps> =
   }, [isOpen]);
 
   return (
-    <div className="relative" data-notifications-panel>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        data-notifications-button
-        className="relative w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-slate-600 hover:bg-gray-200 transition-colors"
-        title="Notificaciones de solicitudes"
-      >
-        <SolicitudesIcon />
-        {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center px-1">
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
-        )}
-      </button>
-
+    <>
       {isOpen && (
-        <div className="fixed left-4 right-4 top-20 z-[100] max-h-[calc(100vh-6rem)] bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-80 sm:max-h-96">
+        <div
+          className="fixed inset-0 bg-black/40 z-[99]"
+          onClick={() => setIsOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <div className="relative" data-notifications-panel>
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          data-notifications-button
+          className="relative w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-slate-600 hover:bg-gray-200 transition-colors"
+          title="Notificaciones de solicitudes"
+        >
+          <SolicitudesIcon />
+          {unreadCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center px-1">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
+        </button>
+
+        {isOpen && (
+          <div className="fixed left-4 right-4 top-20 z-[100] max-h-[calc(100vh-6rem)] bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex flex-col sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-80 sm:max-h-96">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
             <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">
               Solicitudes de comensales
@@ -138,6 +146,7 @@ export const WaiterNotificationsPanel: React.FC<WaiterNotificationsPanelProps> =
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 };

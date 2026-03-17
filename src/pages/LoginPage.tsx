@@ -1,7 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Mail, Loader2, AlertCircle, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, Loader2, AlertCircle, ShieldCheck, Eye, EyeOff, ChevronDown, User } from 'lucide-react';
+import { APP_VERSION } from '../version';
+
+interface WaiterOption {
+  id: string;
+  full_name: string;
+  nickname: string;
+  email: string | null;
+  password: string | null;
+  restaurant_id: string;
+  restaurant_name: string;
+  table_numbers: number[];
+}
 
 const LoginPage: React.FC<{ onLoginSuccess: (waiter: any, restaurant: any) => void }> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
@@ -9,7 +21,67 @@ const LoginPage: React.FC<{ onLoginSuccess: (waiter: any, restaurant: any) => vo
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [waiterOptions, setWaiterOptions] = useState<WaiterOption[]>([]);
+  const [selectedWaiterId, setSelectedWaiterId] = useState<string>('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchWaiterOptions = async () => {
+      const { data: waitersData, error: waitersError } = await supabase
+        .from('waiters')
+        .select('id, full_name, nickname, email, password, restaurant_id')
+        .order('full_name');
+
+      if (waitersError) {
+        console.warn('No se pudo cargar meseros para el dropdown:', waitersError.message);
+        return;
+      }
+
+      if (!waitersData?.length) return;
+
+      const restaurantIds = [...new Set(waitersData.map((w: { restaurant_id: string }) => w.restaurant_id))];
+      const { data: restaurantsData } = await supabase
+        .from('restaurants')
+        .select('id, name')
+        .in('id', restaurantIds);
+
+      const restaurantMap = new Map((restaurantsData || []).map((r: { id: string; name: string }) => [r.id, r.name]));
+
+      const { data: tablesData } = await supabase
+        .from('tables')
+        .select('id, table_number, waiter_id')
+        .in('waiter_id', waitersData.map((w: { id: string }) => w.id));
+
+      const tablesByWaiter = new Map<string, number[]>();
+      (tablesData || []).forEach((t: { waiter_id: string; table_number: number }) => {
+        const list = tablesByWaiter.get(t.waiter_id) || [];
+        list.push(t.table_number ?? 0);
+        tablesByWaiter.set(t.waiter_id, list.sort((a, b) => a - b));
+      });
+
+      setWaiterOptions(
+        waitersData.map((w: { id: string; full_name: string; nickname: string; email: string | null; password: string | null; restaurant_id: string }) => ({
+          id: w.id,
+          full_name: w.full_name,
+          nickname: w.nickname,
+          email: w.email,
+          password: w.password,
+          restaurant_id: w.restaurant_id,
+          restaurant_name: restaurantMap.get(w.restaurant_id) || '—',
+          table_numbers: tablesByWaiter.get(w.id) || [],
+        }))
+      );
+    };
+    fetchWaiterOptions();
+  }, []);
+
+  const handleSelectWaiter = (opt: WaiterOption) => {
+    setSelectedWaiterId(opt.id);
+    setDropdownOpen(false);
+    if (opt.email) setEmail(opt.email);
+    setPassword(opt.password || '');
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,8 +136,9 @@ const LoginPage: React.FC<{ onLoginSuccess: (waiter: any, restaurant: any) => vo
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-10">
           <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-3xl shadow-lg mb-6">
             S
@@ -79,6 +152,59 @@ const LoginPage: React.FC<{ onLoginSuccess: (waiter: any, restaurant: any) => vo
         </div>
 
         <div className="bg-white border border-gray-100 p-8 rounded-3xl shadow-sm">
+          {waiterOptions.length > 0 && (
+            <div className="mb-6">
+              <label className="text-[10px] font-black uppercase text-gray-500 tracking-widest ml-1 block mb-2">
+                Ingresar como:
+              </label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setDropdownOpen((v) => !v)}
+                  className="w-full flex items-center justify-between gap-2 bg-gray-50 border border-gray-200 rounded-xl py-3.5 px-4 text-left text-slate-700 font-medium hover:bg-gray-100 transition-colors"
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <User size={18} className="text-gray-400 shrink-0" />
+                    {selectedWaiterId
+                      ? (() => {
+                          const opt = waiterOptions.find((o) => o.id === selectedWaiterId);
+                          return opt
+                            ? `${opt.restaurant_name} · ${opt.full_name || opt.nickname}${opt.table_numbers.length ? ` (Mesas ${opt.table_numbers.join(', ')})` : ''}`
+                            : 'Seleccionar mesero';
+                        })()
+                      : 'Seleccionar mesero'}
+                  </span>
+                  <ChevronDown size={18} className={`text-gray-400 shrink-0 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {dropdownOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      aria-hidden="true"
+                      onClick={() => setDropdownOpen(false)}
+                    />
+                    <ul className="absolute z-20 mt-1 w-full max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-lg py-1">
+                      {waiterOptions.map((opt) => (
+                        <li key={opt.id}>
+                          <button
+                            type="button"
+                            onClick={() => handleSelectWaiter(opt)}
+                            className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+                          >
+                            <div className="font-semibold text-slate-800">{opt.full_name || opt.nickname}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              {opt.restaurant_name}
+                              {opt.table_numbers.length > 0 && ` · Mesas ${opt.table_numbers.join(', ')}`}
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
               <label className="text-[10px] font-black uppercase text-gray-500 tracking-widest ml-1">Email</label>
@@ -133,7 +259,15 @@ const LoginPage: React.FC<{ onLoginSuccess: (waiter: any, restaurant: any) => vo
             </button>
           </form>
         </div>
+        </div>
       </div>
+      <footer className="flex-shrink-0 px-6 py-3 bg-white border-t border-gray-100">
+        <div className="flex items-center justify-center">
+          <p className="text-[10px] text-slate-400 font-medium">
+            v {APP_VERSION}
+          </p>
+        </div>
+      </footer>
     </div>
   );
 };

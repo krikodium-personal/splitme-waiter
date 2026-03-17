@@ -339,7 +339,13 @@ const App: React.FC = () => {
 
         {/* Panel de notificaciones de envíos/batches */}
         {showNotificationsPanel && (
-          <div data-batch-notifications-panel className="absolute top-full right-6 mt-2 w-[90vw] max-w-md bg-white rounded-2xl shadow-xl border border-gray-200 z-50 max-h-[60vh] overflow-hidden flex flex-col">
+          <>
+            <div
+              className="fixed inset-0 bg-black/40 z-[49]"
+              onClick={() => setShowNotificationsPanel(false)}
+              aria-hidden="true"
+            />
+            <div data-batch-notifications-panel className="absolute top-full right-6 mt-2 w-[90vw] max-w-md bg-white rounded-2xl shadow-xl border border-gray-200 z-50 max-h-[60vh] overflow-hidden flex flex-col">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Envíos recibidos</h3>
               <button
@@ -398,6 +404,7 @@ const App: React.FC = () => {
               )}
             </div>
           </div>
+          </>
         )}
 
         {/* Menú de mesas asignadas - siempre visible después del header */}
