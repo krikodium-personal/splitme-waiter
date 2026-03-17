@@ -701,14 +701,28 @@ const OrderDetailContent: React.FC<{
   const totalAmount = Number(order.total_amount || 0);
   const guestsToShow = (sumOfGuestsWithAmount === totalAmount && totalAmount > 0) ? guestsWithAmount : (order.order_guests ?? []);
 
+  // Suma de lo pagado por comensales (order_guests con paid=TRUE, individual_amount)
+  const paidByGuests = (order.order_guests || [])
+    .filter((g: any) => g.paid === true)
+    .reduce((sum: number, g: any) => sum + (Number(g.individual_amount) || 0), 0);
+  const diferenciaSaldar = totalAmount - paidByGuests;
+
   return (
     <div className="space-y-6 min-w-0 w-full">
-      {/* 1. Header separado: Total acumulado + N envíos + Cerrar mesa */}
+      {/* 1. Header separado: Total acumulado + Diferencia a saldar + N envíos + Cerrar mesa */}
       <div className="px-6 py-5 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-2xl border border-indigo-400 shadow-lg">
         <div className="flex flex-wrap justify-between items-center gap-4">
           <div>
             <p className="text-[9px] font-black text-indigo-100 uppercase tracking-widest mb-0.5">Total acumulado</p>
             <p className="text-2xl font-black text-white tracking-tighter">${Number(order.total_amount).toLocaleString('es-CL')}</p>
+            {totalAmount > 0 && (
+              <p className="text-[9px] font-black text-indigo-100 uppercase tracking-widest mt-2 mb-0.5">Diferencia a saldar</p>
+            )}
+            {totalAmount > 0 && (
+              <p className={`text-xl font-black tracking-tighter ${diferenciaSaldar > 0 ? 'text-red-400' : 'text-white/90'}`}>
+                ${Math.max(0, diferenciaSaldar).toLocaleString('es-CL')}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <span className="px-4 py-1.5 bg-white/20 backdrop-blur-sm text-white rounded-full text-[9px] font-black uppercase tracking-widest border border-white/30">
@@ -1291,6 +1305,7 @@ const OrdersPage: React.FC<OrdersPageProps> = ({ restaurant, waiterTableIds, onN
           } : null,
           order_batches: orderBatches,
           order_guests: guestsWithPayments,
+          payments: orderPayments,
           lastActivity
         };
       });
